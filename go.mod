@@ -1,4 +1,4 @@
-module heyai
+module github.com/ducng99/heyai
 
 go 1.26
 

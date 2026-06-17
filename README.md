@@ -4,7 +4,21 @@
 
 Assistant responses are rendered as Markdown when stdout is an interactive terminal. Redirected or piped output remains raw Markdown-friendly text.
 
-## Build
+## Installation
+
+### Prebuilt binaries
+
+Download the latest release for your platform from the
+[GitHub Releases](https://github.com/ducng99/heyai/releases) page, extract
+the archive, and place the `heyai` binary somewhere on your `$PATH`.
+
+### Go install
+
+```bash
+go install github.com/ducng99/heyai@latest
+```
+
+### Build from source
 
 ```bash
 go build -o heyai .
