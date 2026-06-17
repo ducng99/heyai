@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -67,8 +68,11 @@ func LoadConfig() (Config, error) {
 		}
 		return cfg, err
 	}
+	if strings.TrimSpace(string(b)) == "" {
+		return cfg, fmt.Errorf("config at %s is empty", path)
+	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("invalid config JSON at %s: %w", path, err)
 	}
 	applyDefaults(&cfg)
 	return cfg, nil
