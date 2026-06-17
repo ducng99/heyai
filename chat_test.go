@@ -47,12 +47,15 @@ func TestChatCompletionsURLAcceptsV1Base(t *testing.T) {
 }
 
 func TestParseRuntimeFlagsAutoAlias(t *testing.T) {
-	auto, readOnly, promptArgs := parseRuntimeFlags([]string{"-a", "run", "pwd"})
+	auto, readOnly, verbose, promptArgs := parseRuntimeFlags([]string{"-a", "run", "pwd"})
 	if !auto {
 		t.Fatal("expected auto mode")
 	}
 	if readOnly {
 		t.Fatal("did not expect readonly mode")
+	}
+	if verbose {
+		t.Fatal("did not expect verbose mode")
 	}
 	if strings.Join(promptArgs, " ") != "run pwd" {
 		t.Fatalf("promptArgs=%q", promptArgs)
@@ -60,12 +63,31 @@ func TestParseRuntimeFlagsAutoAlias(t *testing.T) {
 }
 
 func TestParseRuntimeFlagsReadOnlyAlias(t *testing.T) {
-	auto, readOnly, promptArgs := parseRuntimeFlags([]string{"-r", "run", "pwd"})
+	auto, readOnly, verbose, promptArgs := parseRuntimeFlags([]string{"-r", "run", "pwd"})
 	if auto {
 		t.Fatal("did not expect auto mode")
 	}
 	if !readOnly {
 		t.Fatal("expected readonly mode")
+	}
+	if verbose {
+		t.Fatal("did not expect verbose mode")
+	}
+	if strings.Join(promptArgs, " ") != "run pwd" {
+		t.Fatalf("promptArgs=%q", promptArgs)
+	}
+}
+
+func TestParseRuntimeFlagsVerboseAlias(t *testing.T) {
+	auto, readOnly, verbose, promptArgs := parseRuntimeFlags([]string{"-v", "run", "pwd"})
+	if auto {
+		t.Fatal("did not expect auto mode")
+	}
+	if readOnly {
+		t.Fatal("did not expect readonly mode")
+	}
+	if !verbose {
+		t.Fatal("expected verbose mode")
 	}
 	if strings.Join(promptArgs, " ") != "run pwd" {
 		t.Fatalf("promptArgs=%q", promptArgs)
@@ -185,6 +207,26 @@ func TestChatAutoApprovesNeedsConfirmCommand(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "Auto-approved") {
 		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
+func TestChatVerboseBashLifecycle(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"pwd","description":"print directory"}`}}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Verbose: true,
+		Config:  Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Err:     &errOut,
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if !strings.Contains(result, `"exit_code":0`) {
+		t.Fatalf("result=%q", result)
+	}
+	for _, want := range []string{"╭─ Bash", "print directory", "│ ", "pwd", "running", "completed"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("verbose output missing %q: %q", want, errOut.String())
+		}
 	}
 }
 

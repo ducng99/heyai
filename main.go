@@ -40,7 +40,7 @@ func run(args []string) error {
 	if cfg.APIKey == "" {
 		return errors.New("missing api_key in config")
 	}
-	auto, readOnly, promptArgs := parseRuntimeFlags(args)
+	auto, readOnly, verbose, promptArgs := parseRuntimeFlags(args)
 	if len(promptArgs) == 0 {
 		return errors.New("missing prompt")
 	}
@@ -49,7 +49,7 @@ func run(args []string) error {
 	}
 
 	client := NewOpenAIClient(cfg)
-	chat := Chat{Client: client, Config: cfg, Auto: auto, Out: os.Stdout, Err: os.Stderr}
+	chat := Chat{Client: client, Config: cfg, Auto: auto, Verbose: verbose, Out: os.Stdout, Err: os.Stderr}
 	if isTerminal(os.Stdout) {
 		if renderer, err := newTerminalMarkdownRenderer(os.Stdout); err == nil {
 			chat.Renderer = renderer
@@ -61,9 +61,10 @@ func run(args []string) error {
 	return chat.Run(context.Background(), strings.Join(promptArgs, " "))
 }
 
-func parseRuntimeFlags(args []string) (bool, bool, []string) {
+func parseRuntimeFlags(args []string) (bool, bool, bool, []string) {
 	auto := false
 	readOnly := false
+	verbose := false
 	promptArgs := make([]string, 0, len(args))
 	for _, arg := range args {
 		if arg == "--auto" || arg == "-a" {
@@ -74,19 +75,24 @@ func parseRuntimeFlags(args []string) (bool, bool, []string) {
 			readOnly = true
 			continue
 		}
+		if arg == "--verbose" || arg == "-v" {
+			verbose = true
+			continue
+		}
 		promptArgs = append(promptArgs, arg)
 	}
-	return auto, readOnly, promptArgs
+	return auto, readOnly, verbose, promptArgs
 }
 
 func printUsage() {
 	fmt.Println(`Usage:
-	  heyai [--auto|-a] [--readonly|-r] "prompt here"
+	  heyai [--auto|-a] [--readonly|-r] [--verbose|-v] "prompt here"
 	  heyai --init
 	  heyai --config-path
 
 --auto, -a asks an AI safety checker to approve commands that would otherwise need confirmation.
 --readonly, -r denies any bash command that is not classified as strictly read-only.
+--verbose, -v prints bash tool-call progress.
 
 Configuration is read from $XDG_CONFIG_HOME/heyai/config.json or ~/.config/heyai/config.json.`)
 }
