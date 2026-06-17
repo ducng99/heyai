@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"heyai/guard"
+	"heyai/tool"
 	"io"
 	"net/http"
 	"strings"
@@ -92,7 +93,7 @@ func (c *OpenAIClient) Chat(ctx context.Context, messages []Message) (Message, e
 	return c.chat(ctx, body)
 }
 
-func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {
+func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args tool.BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {
 	messages := []Message{
 		{Role: "system", Content: "You are a strict command safety reviewer for a local CLI. Decide whether a bash command that the static guard marked as needing confirmation is safe to run automatically. Approve only when the command is clearly limited to the current project/workdir, has understandable effects, and does not access secrets, credentials, private system files, network services, package installs, privilege escalation, destructive broad deletes, or paths outside the project. Respond only as JSON: {\"safe\":true|false,\"reason\":\"short reason\"}."},
 		{Role: "user", Content: fmt.Sprintf("Command: %s\nWorkdir: %s\nTool description: %s\nStatic guard reason: %s", args.Command, args.Workdir, args.Description, guardResult.Reason)},

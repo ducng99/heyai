@@ -12,6 +12,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"heyai/guard"
+	"heyai/tool"
 )
 
 type Chat struct {
@@ -22,7 +23,7 @@ type Chat struct {
 		Render(string) (string, error)
 	}
 	AutoClient interface {
-		CheckBashSafety(context.Context, BashArgs, guard.GuardResult) (AutoCheckResult, error)
+		CheckBashSafety(context.Context, tool.BashArgs, guard.GuardResult) (AutoCheckResult, error)
 	}
 	Config  Config
 	Auto    bool
@@ -99,7 +100,7 @@ func (c Chat) writeAssistantContent(content string) {
 }
 
 func (c *Chat) handleBash(ctx context.Context, call ToolCall) string {
-	var args BashArgs
+	var args tool.BashArgs
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 		c.writeVerboseBashFailed("malformed tool arguments")
 		return toolError("malformed tool arguments: " + err.Error())
@@ -147,7 +148,7 @@ func (c *Chat) handleBash(ctx context.Context, call ToolCall) string {
 	}
 
 	c.writeVerboseBashRunning()
-	res := RunBash(ctx, args, c.Config.Bash)
+	res := tool.RunBash(ctx, args, c.Config.Bash)
 	c.writeVerboseBashCompleted(res)
 	b, err := json.Marshal(res)
 	if err != nil {
@@ -161,7 +162,7 @@ func toolError(msg string) string {
 	return string(b)
 }
 
-func (c *Chat) writeVerboseBashStart(args BashArgs) {
+func (c *Chat) writeVerboseBashStart(args tool.BashArgs) {
 	if !c.Verbose {
 		return
 	}
@@ -183,7 +184,7 @@ func (c *Chat) writeVerboseBashRunning() {
 	c.writeVerboseStatus(verboseRunningStyle.Render("╰─ ● running"), false)
 }
 
-func (c *Chat) writeVerboseBashCompleted(res BashResult) {
+func (c *Chat) writeVerboseBashCompleted(res tool.BashResult) {
 	if !c.Verbose {
 		return
 	}

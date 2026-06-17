@@ -1,4 +1,4 @@
-package main
+package tool
 
 import (
 	"bytes"
@@ -7,6 +7,13 @@ import (
 	"os/exec"
 	"time"
 )
+
+type BashConfig struct {
+	TimeoutMS                int  `json:"timeout_ms"`
+	AllowRiskyWithoutConfirm bool `json:"allow_risky_without_confirm"`
+	MaxOutputBytes           int  `json:"max_output_bytes"`
+	ReadOnly                 bool `json:"read_only"`
+}
 
 type BashArgs struct {
 	Command     string `json:"command"`
@@ -29,11 +36,11 @@ func RunBash(parent context.Context, args BashArgs, cfg BashConfig) BashResult {
 		timeout = args.TimeoutMS
 	}
 	if timeout <= 0 {
-		timeout = defaultConfig().Bash.TimeoutMS
+		timeout = 30000
 	}
 	limit := cfg.MaxOutputBytes
 	if limit <= 0 {
-		limit = defaultConfig().Bash.MaxOutputBytes
+		limit = 20000
 	}
 
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeout)*time.Millisecond)

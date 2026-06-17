@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"heyai/tool"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ type Config struct {
 	Model     string          `json:"model"`
 	MaxTurns  int             `json:"max_turns"`
 	AutoCheck AutoCheckConfig `json:"auto_check"`
-	Bash      BashConfig      `json:"bash"`
+	Bash      tool.BashConfig `json:"bash"`
 }
 
 type AutoCheckConfig struct {
@@ -24,19 +25,12 @@ type AutoCheckConfig struct {
 	Model   string `json:"model"`
 }
 
-type BashConfig struct {
-	TimeoutMS                int  `json:"timeout_ms"`
-	AllowRiskyWithoutConfirm bool `json:"allow_risky_without_confirm"`
-	MaxOutputBytes           int  `json:"max_output_bytes"`
-	ReadOnly                 bool `json:"read_only"`
-}
-
 func defaultConfig() Config {
 	return Config{
 		BaseURL:  "https://api.openai.com",
 		Model:    "gpt-4o-mini",
 		MaxTurns: 8,
-		Bash: BashConfig{
+		Bash: tool.BashConfig{
 			TimeoutMS:      30000,
 			MaxOutputBytes: 20000,
 		},
