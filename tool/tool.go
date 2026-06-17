@@ -24,7 +24,7 @@ func DefaultToolsWithBashOptions(bashConfig BashConfig, bashOptions BashOptions)
 	bashOptions.Config = bashConfig
 	tools := []Tool{BashTool{Options: bashOptions}, ReadTool{}}
 	if !bashConfig.ReadOnly {
-		tools = append(tools, EditTool{})
+		tools = append(tools, EditTool{}, WriteTool{}, PatchTool{})
 	}
 	return tools
 }

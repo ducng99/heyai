@@ -20,7 +20,7 @@ func TestOpenAIClientSendsToolSchema(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatal(err)
 		}
-		if len(req.Tools) == 3 {
+		if len(req.Tools) == 5 {
 			for _, tool := range req.Tools {
 				if tool.Function.Name == "bash" {
 					sawTool = true
@@ -42,7 +42,7 @@ func TestOpenAIClientSendsToolSchema(t *testing.T) {
 	}
 }
 
-func TestOpenAIClientOmitsEditToolInReadOnlyMode(t *testing.T) {
+func TestOpenAIClientOmitsMutatingFileToolsInReadOnlyMode(t *testing.T) {
 	var toolNames []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req chatRequest
@@ -61,8 +61,11 @@ func TestOpenAIClientOmitsEditToolInReadOnlyMode(t *testing.T) {
 	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(strings.Join(toolNames, ","), "Edit") {
-		t.Fatalf("readonly tools included Edit: %#v", toolNames)
+	joined := strings.Join(toolNames, ",")
+	for _, name := range []string{"Edit", "Write", "Patch"} {
+		if strings.Contains(joined, name) {
+			t.Fatalf("readonly tools included %s: %#v", name, toolNames)
+		}
 	}
 }
 

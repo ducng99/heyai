@@ -81,6 +81,69 @@ func TestEditToolRejectsMultipleOccurrences(t *testing.T) {
 	}
 }
 
+func TestWriteToolReplacesEntireFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("old content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := (WriteTool{}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"content":"new content"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := result.(WriteResult)
+	if write.Bytes != len("new content") {
+		t.Fatalf("bytes=%d", write.Bytes)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "new content" {
+		t.Fatalf("content=%q", string(b))
+	}
+}
+
+func TestPatchToolAppliesUnifiedDiff(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	patch := "--- a/note.txt\n+++ b/note.txt\n@@ -1,3 +1,4 @@\n one\n-two\n+2\n three\n+four\n"
+
+	result, err := (PatchTool{}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"patch":`+quote(patch)+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := result.(PatchResult)
+	if patched.Hunks != 1 {
+		t.Fatalf("hunks=%d", patched.Hunks)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "one\n2\nthree\nfour\n" {
+		t.Fatalf("content=%q", string(b))
+	}
+}
+
+func TestPatchToolRejectsMismatchedContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	patch := "@@ -1,2 +1,2 @@\n nope\n-two\n+2\n"
+
+	_, err := (PatchTool{}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"patch":`+quote(patch)+`}`))
+	if err == nil || !strings.Contains(err.Error(), "context mismatch") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func quote(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

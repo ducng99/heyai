@@ -1,6 +1,6 @@
 # heyai
 
-`heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports local tools for guarded bash commands, reading files, listing directories, and editing files.
+`heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports local tools for guarded bash commands, reading files, listing directories, and modifying files.
 
 Assistant responses are rendered as Markdown when stdout is an interactive terminal. Redirected or piped output remains raw Markdown-friendly text.
 
@@ -74,7 +74,11 @@ The `Read` tool reads a file's content or lists the direct entries in a director
 
 The `Edit` tool replaces exactly one occurrence of a string in a file. If the string is not found or appears more than once, the tool returns an error instructing the assistant to read the file and provide a more exact replacement target.
 
-When `--readonly` or `-r` is enabled, `Edit` is not advertised to the model.
+The `Write` tool replaces an entire file with supplied content.
+
+The `Patch` tool applies a single-file unified diff patch to a file.
+
+When `--readonly` or `-r` is enabled, `Edit`, `Write`, and `Patch` are not advertised to the model.
 
 ## Verification
 
