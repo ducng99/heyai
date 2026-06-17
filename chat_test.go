@@ -90,6 +90,30 @@ func TestChatToolLoop(t *testing.T) {
 	}
 }
 
+func TestChatRendersAssistantMarkdown(t *testing.T) {
+	client := &fakeClient{responses: []Message{{Role: "assistant", Content: "# Done"}}}
+	var out bytes.Buffer
+	chat := Chat{Client: client, Config: Config{MaxTurns: 1}, Out: &out, Renderer: fakeRenderer{rendered: "rendered"}}
+	if err := chat.Run(context.Background(), "render"); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "rendered\n" {
+		t.Fatalf("out=%q", out.String())
+	}
+}
+
+func TestChatFallsBackWhenMarkdownRenderFails(t *testing.T) {
+	client := &fakeClient{responses: []Message{{Role: "assistant", Content: "# Done"}}}
+	var out bytes.Buffer
+	chat := Chat{Client: client, Config: Config{MaxTurns: 1}, Out: &out, Renderer: fakeRenderer{err: errors.New("render failed")}}
+	if err := chat.Run(context.Background(), "render"); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "# Done\n" {
+		t.Fatalf("out=%q", out.String())
+	}
+}
+
 func TestChatMalformedToolArgs(t *testing.T) {
 	client := &fakeClient{responses: []Message{
 		{Role: "assistant", ToolCalls: []ToolCall{{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{bad`}}}},
@@ -309,6 +333,18 @@ type fakeAutoChecker struct {
 	result AutoCheckResult
 	err    error
 	calls  int
+}
+
+type fakeRenderer struct {
+	rendered string
+	err      error
+}
+
+func (f fakeRenderer) Render(markdown string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.rendered, nil
 }
 
 func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {

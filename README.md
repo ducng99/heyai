@@ -2,6 +2,8 @@
 
 `heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports a guarded `bash` tool for read-only and explicitly approved local commands.
 
+Assistant responses are rendered as Markdown when stdout is an interactive terminal. Redirected or piped output remains raw Markdown-friendly text.
+
 ## Build
 
 ```bash

@@ -14,6 +14,9 @@ type Chat struct {
 	Client interface {
 		Chat(context.Context, []Message) (Message, error)
 	}
+	Renderer interface {
+		Render(string) (string, error)
+	}
 	AutoClient interface {
 		CheckBashSafety(context.Context, BashArgs, guard.GuardResult) (AutoCheckResult, error)
 	}
@@ -47,7 +50,7 @@ func (c Chat) Run(ctx context.Context, prompt string) error {
 		messages = append(messages, msg)
 		if len(msg.ToolCalls) == 0 {
 			if msg.Content != "" {
-				fmt.Fprintln(c.Out, msg.Content)
+				c.writeAssistantContent(msg.Content)
 			}
 			return nil
 		}
@@ -61,6 +64,19 @@ func (c Chat) Run(ctx context.Context, prompt string) error {
 		}
 	}
 	return fmt.Errorf("max turns exceeded")
+}
+
+func (c Chat) writeAssistantContent(content string) {
+	if c.Renderer != nil {
+		if rendered, err := c.Renderer.Render(content); err == nil {
+			fmt.Fprint(c.Out, rendered)
+			if !strings.HasSuffix(rendered, "\n") {
+				fmt.Fprintln(c.Out)
+			}
+			return
+		}
+	}
+	fmt.Fprintln(c.Out, content)
 }
 
 func (c Chat) handleBash(ctx context.Context, call ToolCall) string {

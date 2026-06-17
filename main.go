@@ -50,6 +50,11 @@ func run(args []string) error {
 
 	client := NewOpenAIClient(cfg)
 	chat := Chat{Client: client, Config: cfg, Auto: auto, Out: os.Stdout, Err: os.Stderr}
+	if isTerminal(os.Stdout) {
+		if renderer, err := newTerminalMarkdownRenderer(os.Stdout); err == nil {
+			chat.Renderer = renderer
+		}
+	}
 	if auto {
 		chat.AutoClient = NewAutoCheckClient(cfg)
 	}
