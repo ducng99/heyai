@@ -20,7 +20,8 @@
 
 ## Bash Tool Gotchas
 - The bash guard is a static classifier, not a sandbox; keep tests around any changes to `CheckBash`, tokenization, path checks, or wrapper-command handling.
-- `CheckBash` treats the process current working directory as the allowed root. Absolute paths, `..`, `~`, and `workdir` outside that root are denied.
+- `CheckBash` treats the process current working directory as the current-dir boundary. Absolute paths outside it, `..`, `~`, and `workdir` outside it require confirmation rather than automatic denial.
+- Empty bash commands are invalid and denied without prompting.
 - Only `go test` is classified safe among `go` commands; `go mod tidy` and other mutating or unknown commands require confirmation.
 - `RunBash` executes through `bash -lc`, applies the lower of config/tool timeouts when provided, and truncates combined stdout/stderr by `max_output_bytes`.
 

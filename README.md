@@ -54,13 +54,15 @@ heyai --help
 
 ## Bash Tool Security Model
 
-The bash tool uses a static guard before executing commands. It classifies commands as safe, confirmation-required, or denied.
+The bash tool uses a static guard before executing commands. It classifies commands as safe, confirmation-required, or invalid.
 
 Safe commands are intended to be read-only, such as `pwd`, `ls`, `cat`, `grep`, `find` without mutation, and `go test ./...`.
 
-Commands that write or mutate files require confirmation by default, such as `rm`, `mv`, `cp`, `mkdir`, `touch`, `go mod tidy`, `npm install`, `find -delete`, and nested destructive commands in `find -exec` or `xargs`.
+Commands that write, mutate files, use elevated privileges, run nested shells, use shell expansion, or reference paths outside the current directory require confirmation by default. Examples include `sudo`, `su`, `rm`, `mv`, `cp`, `mkdir`, `touch`, `go mod tidy`, `npm install`, `find -delete`, `bash -c`, `$(...)`, `/etc/passwd`, `../file`, and nested commands in `find -exec` or `xargs`.
 
-Commands are denied when they use unsupported shell features, privileged execution, nested shells, or paths outside the current working directory root.
+Empty commands are rejected as invalid instead of prompting.
+
+When `allow_risky_without_confirm` is `true`, confirmation-required commands run without prompting. Safe commands always run without prompting.
 
 Important: this is a static guard, not a true sandbox. It reduces risk but cannot perfectly contain arbitrary processes. True containment requires OS sandboxing such as containers, bubblewrap, chroot, seccomp, or similar.
 
