@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"heyai/guard"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,9 +47,25 @@ func TestChatCompletionsURLAcceptsV1Base(t *testing.T) {
 }
 
 func TestParseRuntimeFlagsAutoAlias(t *testing.T) {
-	auto, promptArgs := parseRuntimeFlags([]string{"-a", "run", "pwd"})
+	auto, readOnly, promptArgs := parseRuntimeFlags([]string{"-a", "run", "pwd"})
 	if !auto {
 		t.Fatal("expected auto mode")
+	}
+	if readOnly {
+		t.Fatal("did not expect readonly mode")
+	}
+	if strings.Join(promptArgs, " ") != "run pwd" {
+		t.Fatalf("promptArgs=%q", promptArgs)
+	}
+}
+
+func TestParseRuntimeFlagsReadOnlyAlias(t *testing.T) {
+	auto, readOnly, promptArgs := parseRuntimeFlags([]string{"-r", "run", "pwd"})
+	if auto {
+		t.Fatal("did not expect auto mode")
+	}
+	if !readOnly {
+		t.Fatal("expected readonly mode")
 	}
 	if strings.Join(promptArgs, " ") != "run pwd" {
 		t.Fatalf("promptArgs=%q", promptArgs)
@@ -103,6 +120,24 @@ func TestChatFormerlyDeniedCommandRequiresConfirmation(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "requires confirmation") {
 		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
+func TestChatReadOnlyDeniesNeedsConfirmCommand(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"echo hi > file.txt"}`}}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Config: Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000, ReadOnly: true}},
+		Err:    &errOut,
+		In:     strings.NewReader("y\n"),
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if !strings.Contains(result, "readonly mode denied command") {
+		t.Fatalf("result=%q", result)
+	}
+	if strings.Contains(errOut.String(), "requires confirmation") {
+		t.Fatalf("readonly mode prompted for confirmation: %q", errOut.String())
 	}
 }
 
@@ -195,7 +230,7 @@ func TestOpenAIClientChecksBashSafetyWithoutTools(t *testing.T) {
 	defer srv.Close()
 
 	client := NewAutoCheckClient(Config{APIKey: "primary-key", BaseURL: srv.URL, Model: "primary-model", AutoCheck: AutoCheckConfig{Model: "check-model"}})
-	result, err := client.CheckBashSafety(context.Background(), BashArgs{Command: "false"}, GuardResult{Reason: "command is not in allowlist"})
+	result, err := client.CheckBashSafety(context.Background(), BashArgs{Command: "false"}, guard.GuardResult{Reason: "command is not in allowlist"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +311,7 @@ type fakeAutoChecker struct {
 	calls  int
 }
 
-func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args BashArgs, guard GuardResult) (AutoCheckResult, error) {
+func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {
 	f.calls++
 	if f.err != nil {
 		return AutoCheckResult{}, f.err

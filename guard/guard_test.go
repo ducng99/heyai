@@ -1,9 +1,9 @@
-package main
+package guard
 
 import "testing"
 
 func TestCheckBashSafe(t *testing.T) {
-	for _, cmd := range []string{"pwd", "ls", "ls ./", "cat README.md", "grep foo README.md", "grep -R foo .", "find . -name *.go", "find ./src -type f", "go test ./..."} {
+	for _, cmd := range []string{"pwd", "ls", "ls ./", "cat README.md", "grep foo README.md", "grep -R foo .", "find . -name *.go", "find ./src -type f", "go test ./...", "curl https://example.com", "curl -I https://example.com", "curl -X GET https://example.com"} {
 		t.Run(cmd, func(t *testing.T) {
 			res, err := CheckBash(cmd, "")
 			if err != nil {
@@ -17,7 +17,7 @@ func TestCheckBashSafe(t *testing.T) {
 }
 
 func TestCheckBashNeedsConfirm(t *testing.T) {
-	for _, cmd := range []string{"rm file.txt", "rm -rf tmp", "mv a.txt b.txt", "cp a.txt b.txt", "mkdir tmp", "touch file.txt", "go mod tidy", "npm install", "find . -name *.tmp -delete", "find . -exec rm {} \\;", "xargs rm"} {
+	for _, cmd := range []string{"rm file.txt", "rm -rf tmp", "mv a.txt b.txt", "cp a.txt b.txt", "mkdir tmp", "touch file.txt", "go mod tidy", "npm install", "find . -name *.tmp -delete", "find . -exec rm {} \\;", "xargs rm", "curl -o out https://example.com", "curl -O https://example.com/file", "curl --output out https://example.com", "curl -d a=b https://example.com", "curl -X POST https://example.com"} {
 		t.Run(cmd, func(t *testing.T) {
 			res, err := CheckBash(cmd, "")
 			if err != nil {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"heyai/guard"
 	"io"
 	"strings"
 )
@@ -14,7 +15,7 @@ type Chat struct {
 		Chat(context.Context, []Message) (Message, error)
 	}
 	AutoClient interface {
-		CheckBashSafety(context.Context, BashArgs, GuardResult) (AutoCheckResult, error)
+		CheckBashSafety(context.Context, BashArgs, guard.GuardResult) (AutoCheckResult, error)
 	}
 	Config Config
 	Auto   bool
@@ -67,20 +68,23 @@ func (c Chat) handleBash(ctx context.Context, call ToolCall) string {
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 		return toolError("malformed tool arguments: " + err.Error())
 	}
-	guard, err := CheckBash(args.Command, args.Workdir)
+	guardResult, err := guard.CheckBash(args.Command, args.Workdir)
 	if err != nil {
 		return toolError(err.Error())
 	}
-	if guard.Risk == RiskDenied {
-		return toolError("invalid command: " + guard.Reason)
+	if guardResult.Risk == guard.RiskDenied {
+		return toolError("invalid command: " + guardResult.Reason)
 	}
-	if guard.Risk != RiskSafe && !c.Config.Bash.AllowRiskyWithoutConfirm {
+	if c.Config.Bash.ReadOnly && guardResult.Risk != guard.RiskSafe {
+		return toolError("readonly mode denied command: " + guardResult.Reason)
+	}
+	if guardResult.Risk != guard.RiskSafe && !c.Config.Bash.AllowRiskyWithoutConfirm {
 		approved := false
 		if c.Auto {
 			if c.AutoClient == nil {
 				fmt.Fprintln(c.Err, "Auto confirmation unavailable: no auto check client is configured")
 			} else {
-				check, err := c.AutoClient.CheckBashSafety(ctx, args, guard)
+				check, err := c.AutoClient.CheckBashSafety(ctx, args, guardResult)
 				if err != nil {
 					fmt.Fprintf(c.Err, "Auto confirmation failed: %s\n", err)
 				} else if !check.Safe {
@@ -92,7 +96,7 @@ func (c Chat) handleBash(ctx context.Context, call ToolCall) string {
 			}
 		}
 		if !approved {
-			fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guard.Reason, args.Command)
+			fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guardResult.Reason, args.Command)
 			answer, _ := bufio.NewReader(c.In).ReadString('\n')
 			answer = strings.ToLower(strings.TrimSpace(answer))
 			if answer != "y" && answer != "yes" {

@@ -28,6 +28,7 @@ type BashConfig struct {
 	TimeoutMS                int  `json:"timeout_ms"`
 	AllowRiskyWithoutConfirm bool `json:"allow_risky_without_confirm"`
 	MaxOutputBytes           int  `json:"max_output_bytes"`
+	ReadOnly                 bool `json:"read_only"`
 }
 
 func defaultConfig() Config {
