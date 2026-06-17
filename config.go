@@ -9,11 +9,18 @@ import (
 )
 
 type Config struct {
-	APIKey   string     `json:"api_key"`
-	BaseURL  string     `json:"base_url"`
-	Model    string     `json:"model"`
-	MaxTurns int        `json:"max_turns"`
-	Bash     BashConfig `json:"bash"`
+	APIKey    string          `json:"api_key"`
+	BaseURL   string          `json:"base_url"`
+	Model     string          `json:"model"`
+	MaxTurns  int             `json:"max_turns"`
+	AutoCheck AutoCheckConfig `json:"auto_check"`
+	Bash      BashConfig      `json:"bash"`
+}
+
+type AutoCheckConfig struct {
+	APIKey  string `json:"api_key"`
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
 }
 
 type BashConfig struct {
@@ -74,6 +81,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Model == "" {
 		cfg.Model = d.Model
+	}
+	if cfg.AutoCheck.Model == "" {
+		cfg.AutoCheck.Model = cfg.Model
 	}
 	if cfg.MaxTurns == 0 {
 		cfg.MaxTurns = d.MaxTurns

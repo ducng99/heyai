@@ -34,6 +34,11 @@ type chatRequest struct {
 	Tools    []ToolDef `json:"tools,omitempty"`
 }
 
+type AutoCheckResult struct {
+	Safe   bool   `json:"safe"`
+	Reason string `json:"reason"`
+}
+
 type ToolDef struct {
 	Type     string      `json:"type"`
 	Function FunctionDef `json:"function"`
@@ -65,8 +70,48 @@ func NewOpenAIClient(cfg Config) *OpenAIClient {
 	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(cfg.BaseURL, "/"), APIKey: cfg.APIKey, Model: cfg.Model}
 }
 
+func NewAutoCheckClient(cfg Config) *OpenAIClient {
+	apiKey := cfg.AutoCheck.APIKey
+	if apiKey == "" {
+		apiKey = cfg.APIKey
+	}
+	baseURL := cfg.AutoCheck.BaseURL
+	if baseURL == "" {
+		baseURL = cfg.BaseURL
+	}
+	model := cfg.AutoCheck.Model
+	if model == "" {
+		model = cfg.Model
+	}
+	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(baseURL, "/"), APIKey: apiKey, Model: model}
+}
+
 func (c *OpenAIClient) Chat(ctx context.Context, messages []Message) (Message, error) {
 	body := chatRequest{Model: c.Model, Messages: messages, Tools: []ToolDef{bashToolDef()}}
+	return c.chat(ctx, body)
+}
+
+func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args BashArgs, guard GuardResult) (AutoCheckResult, error) {
+	messages := []Message{
+		{Role: "system", Content: "You are a strict command safety reviewer for a local CLI. Decide whether a bash command that the static guard marked as needing confirmation is safe to run automatically. Approve only when the command is clearly limited to the current project/workdir, has understandable effects, and does not access secrets, credentials, private system files, network services, package installs, privilege escalation, destructive broad deletes, or paths outside the project. Respond only as JSON: {\"safe\":true|false,\"reason\":\"short reason\"}."},
+		{Role: "user", Content: fmt.Sprintf("Command: %s\nWorkdir: %s\nTool description: %s\nStatic guard reason: %s", args.Command, args.Workdir, args.Description, guard.Reason)},
+	}
+	body := chatRequest{Model: c.Model, Messages: messages}
+	msg, err := c.chat(ctx, body)
+	if err != nil {
+		return AutoCheckResult{}, err
+	}
+	var result AutoCheckResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(msg.Content)), &result); err != nil {
+		return AutoCheckResult{}, fmt.Errorf("auto check returned invalid JSON: %w", err)
+	}
+	if result.Reason == "" {
+		result.Reason = "no reason provided"
+	}
+	return result, nil
+}
+
+func (c *OpenAIClient) chat(ctx context.Context, body chatRequest) (Message, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return Message{}, err

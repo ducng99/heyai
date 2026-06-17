@@ -13,7 +13,11 @@ type Chat struct {
 	Client interface {
 		Chat(context.Context, []Message) (Message, error)
 	}
+	AutoClient interface {
+		CheckBashSafety(context.Context, BashArgs, GuardResult) (AutoCheckResult, error)
+	}
 	Config Config
+	Auto   bool
 	Out    io.Writer
 	Err    io.Writer
 	In     io.Reader
@@ -71,11 +75,29 @@ func (c Chat) handleBash(ctx context.Context, call ToolCall) string {
 		return toolError("invalid command: " + guard.Reason)
 	}
 	if guard.Risk != RiskSafe && !c.Config.Bash.AllowRiskyWithoutConfirm {
-		fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guard.Reason, args.Command)
-		answer, _ := bufio.NewReader(c.In).ReadString('\n')
-		answer = strings.ToLower(strings.TrimSpace(answer))
-		if answer != "y" && answer != "yes" {
-			return toolError("not approved")
+		approved := false
+		if c.Auto {
+			if c.AutoClient == nil {
+				fmt.Fprintln(c.Err, "Auto confirmation unavailable: no auto check client is configured")
+			} else {
+				check, err := c.AutoClient.CheckBashSafety(ctx, args, guard)
+				if err != nil {
+					fmt.Fprintf(c.Err, "Auto confirmation failed: %s\n", err)
+				} else if !check.Safe {
+					fmt.Fprintf(c.Err, "Auto confirmation rejected command: %s\n", check.Reason)
+				} else {
+					approved = true
+					fmt.Fprintf(c.Err, "Auto-approved bash command (%s): %s\n", check.Reason, args.Command)
+				}
+			}
+		}
+		if !approved {
+			fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guard.Reason, args.Command)
+			answer, _ := bufio.NewReader(c.In).ReadString('\n')
+			answer = strings.ToLower(strings.TrimSpace(answer))
+			if answer != "y" && answer != "yes" {
+				return toolError("not approved")
+			}
 		}
 	}
 

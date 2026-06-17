@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,6 +42,16 @@ func TestChatCompletionsURLAcceptsV1Base(t *testing.T) {
 	}
 	if got := chatCompletionsURL("https://example.test"); got != "https://example.test/v1/chat/completions" {
 		t.Fatalf("url=%q", got)
+	}
+}
+
+func TestParseRuntimeFlagsAutoAlias(t *testing.T) {
+	auto, promptArgs := parseRuntimeFlags([]string{"-a", "run", "pwd"})
+	if !auto {
+		t.Fatal("expected auto mode")
+	}
+	if strings.Join(promptArgs, " ") != "run pwd" {
+		t.Fatalf("promptArgs=%q", promptArgs)
 	}
 }
 
@@ -95,6 +106,113 @@ func TestChatFormerlyDeniedCommandRequiresConfirmation(t *testing.T) {
 	}
 }
 
+func TestChatAutoApprovesNeedsConfirmCommand(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"false"}`}}
+	checker := &fakeAutoChecker{result: AutoCheckResult{Safe: true, Reason: "harmless exit status check"}}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Auto:       true,
+		AutoClient: checker,
+		Config:     Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Err:        &errOut,
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if !strings.Contains(result, `"exit_code":1`) {
+		t.Fatalf("result=%q", result)
+	}
+	if checker.calls != 1 {
+		t.Fatalf("auto checker calls=%d", checker.calls)
+	}
+	if !strings.Contains(errOut.String(), "Auto-approved") {
+		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
+func TestChatAutoRejectsNeedsConfirmCommand(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"false"}`}}
+	checker := &fakeAutoChecker{result: AutoCheckResult{Safe: false, Reason: "unknown command"}}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Auto:       true,
+		AutoClient: checker,
+		Config:     Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Err:        &errOut,
+		In:         strings.NewReader("y\n"),
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if !strings.Contains(result, `"exit_code":1`) {
+		t.Fatalf("result=%q", result)
+	}
+	if checker.calls != 1 {
+		t.Fatalf("auto checker calls=%d", checker.calls)
+	}
+	if !strings.Contains(errOut.String(), "Auto confirmation rejected command") || !strings.Contains(errOut.String(), "Run? [y/N]") {
+		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
+func TestChatAutoErrorFallsBackToConfirmation(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"false"}`}}
+	checker := &fakeAutoChecker{err: errors.New("api down")}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Auto:       true,
+		AutoClient: checker,
+		Config:     Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Err:        &errOut,
+		In:         strings.NewReader("n\n"),
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if !strings.Contains(result, "not approved") {
+		t.Fatalf("result=%q", result)
+	}
+	if checker.calls != 1 {
+		t.Fatalf("auto checker calls=%d", checker.calls)
+	}
+	if !strings.Contains(errOut.String(), "Auto confirmation failed: api down") || !strings.Contains(errOut.String(), "Run? [y/N]") {
+		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
+func TestOpenAIClientChecksBashSafetyWithoutTools(t *testing.T) {
+	var sawTools bool
+	var sawModel string
+	var sawAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		sawModel = req.Model
+		sawTools = len(req.Tools) > 0
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"safe\":true,\"reason\":\"scoped\"}"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewAutoCheckClient(Config{APIKey: "primary-key", BaseURL: srv.URL, Model: "primary-model", AutoCheck: AutoCheckConfig{Model: "check-model"}})
+	result, err := client.CheckBashSafety(context.Background(), BashArgs{Command: "false"}, GuardResult{Reason: "command is not in allowlist"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Safe || result.Reason != "scoped" {
+		t.Fatalf("result=%#v", result)
+	}
+	if sawTools {
+		t.Fatal("auto check request included tools")
+	}
+	if sawModel != "check-model" {
+		t.Fatalf("model=%q", sawModel)
+	}
+	if sawAuth != "Bearer primary-key" {
+		t.Fatalf("auth=%q", sawAuth)
+	}
+}
+
 func TestChatMaxTurns(t *testing.T) {
 	client := &fakeClient{responses: []Message{{Role: "assistant", ToolCalls: []ToolCall{{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"pwd"}`}}}}}}
 	chat := Chat{Client: client, Config: Config{MaxTurns: 1, Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}}
@@ -128,4 +246,18 @@ func (f *fakeClient) Chat(ctx context.Context, messages []Message) (Message, err
 	res := f.responses[0]
 	f.responses = f.responses[1:]
 	return res, nil
+}
+
+type fakeAutoChecker struct {
+	result AutoCheckResult
+	err    error
+	calls  int
+}
+
+func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args BashArgs, guard GuardResult) (AutoCheckResult, error) {
+	f.calls++
+	if f.err != nil {
+		return AutoCheckResult{}, f.err
+	}
+	return f.result, nil
 }

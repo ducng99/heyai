@@ -40,17 +40,39 @@ func run(args []string) error {
 	if cfg.APIKey == "" {
 		return errors.New("missing api_key in config")
 	}
+	auto, promptArgs := parseRuntimeFlags(args)
+	if len(promptArgs) == 0 {
+		return errors.New("missing prompt")
+	}
 
 	client := NewOpenAIClient(cfg)
-	chat := Chat{Client: client, Config: cfg, Out: os.Stdout, Err: os.Stderr}
-	return chat.Run(context.Background(), strings.Join(args, " "))
+	chat := Chat{Client: client, Config: cfg, Auto: auto, Out: os.Stdout, Err: os.Stderr}
+	if auto {
+		chat.AutoClient = NewAutoCheckClient(cfg)
+	}
+	return chat.Run(context.Background(), strings.Join(promptArgs, " "))
+}
+
+func parseRuntimeFlags(args []string) (bool, []string) {
+	auto := false
+	promptArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--auto" || arg == "-a" {
+			auto = true
+			continue
+		}
+		promptArgs = append(promptArgs, arg)
+	}
+	return auto, promptArgs
 }
 
 func printUsage() {
 	fmt.Println(`Usage:
-  heyai "prompt here"
-  heyai --init
-  heyai --config-path
+	  heyai [--auto|-a] "prompt here"
+	  heyai --init
+	  heyai --config-path
+
+--auto, -a asks an AI safety checker to approve commands that would otherwise need confirmation.
 
 Configuration is read from $XDG_CONFIG_HOME/heyai/config.json or ~/.config/heyai/config.json.`)
 }
