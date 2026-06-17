@@ -233,6 +233,28 @@ func TestOpenAIClientAPIError(t *testing.T) {
 	}
 }
 
+func TestOpenAIClientEmptyResponseBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	client := NewOpenAIClient(Config{APIKey: "k", BaseURL: srv.URL, Model: "m"})
+	_, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}})
+	if err == nil || !strings.Contains(err.Error(), "api returned empty response body") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestOpenAIClientInvalidJSONResponseBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+	client := NewOpenAIClient(Config{APIKey: "k", BaseURL: srv.URL, Model: "m"})
+	_, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}})
+	if err == nil || !strings.Contains(err.Error(), "api returned invalid JSON (200 OK): not json") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 type fakeClient struct {
 	responses []Message
 	calls     [][]Message

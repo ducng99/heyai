@@ -133,10 +133,17 @@ func (c *OpenAIClient) chat(ctx context.Context, body chatRequest) (Message, err
 	if err != nil {
 		return Message{}, err
 	}
+	trimmed := strings.TrimSpace(string(rb))
+	if trimmed == "" {
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return Message{}, fmt.Errorf("api error: %s with empty response body", resp.Status)
+		}
+		return Message{}, fmt.Errorf("api returned empty response body for %s", chatCompletionsURL(c.BaseURL))
+	}
 
 	var parsed chatResponse
 	if err := json.Unmarshal(rb, &parsed); err != nil {
-		return Message{}, err
+		return Message{}, fmt.Errorf("api returned invalid JSON (%s): %s: %w", resp.Status, responsePreview(trimmed), err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if parsed.Error != nil && parsed.Error.Message != "" {
@@ -151,6 +158,15 @@ func (c *OpenAIClient) chat(ctx context.Context, body chatRequest) (Message, err
 		return Message{}, fmt.Errorf("api returned no choices")
 	}
 	return parsed.Choices[0].Message, nil
+}
+
+func responsePreview(s string) string {
+	const max = 200
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
 }
 
 func chatCompletionsURL(baseURL string) string {
