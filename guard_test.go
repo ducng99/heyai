@@ -30,17 +30,27 @@ func TestCheckBashNeedsConfirm(t *testing.T) {
 	}
 }
 
-func TestCheckBashDenied(t *testing.T) {
+func TestCheckBashFormerlyDeniedNeedsConfirm(t *testing.T) {
 	for _, cmd := range []string{"cat /etc/passwd", "rm ../file", "rm -rf /", "mv file /tmp/file", "echo hi > ../x", "cd ..", "sudo rm file", "bash -c cat", "sh -c rm", "echo $(cat /etc/passwd)", "find /etc -name passwd", "find . -exec cat /etc/passwd \\;", "find . -exec sh -c rm \\;"} {
 		t.Run(cmd, func(t *testing.T) {
 			res, err := CheckBash(cmd, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Risk != RiskDenied {
+			if res.Risk != RiskNeedsConfirm {
 				t.Fatalf("risk=%v reason=%s", res.Risk, res.Reason)
 			}
 		})
+	}
+}
+
+func TestCheckBashEmptyDenied(t *testing.T) {
+	res, err := CheckBash("   ", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Risk != RiskDenied {
+		t.Fatalf("risk=%v reason=%s", res.Risk, res.Reason)
 	}
 }
 
@@ -49,7 +59,7 @@ func TestCheckBashWorkdir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Risk != RiskDenied {
+	if res.Risk != RiskNeedsConfirm {
 		t.Fatalf("risk=%v reason=%s", res.Risk, res.Reason)
 	}
 }

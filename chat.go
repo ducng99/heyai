@@ -68,9 +68,9 @@ func (c Chat) handleBash(ctx context.Context, call ToolCall) string {
 		return toolError(err.Error())
 	}
 	if guard.Risk == RiskDenied {
-		return toolError("denied: " + guard.Reason)
+		return toolError("invalid command: " + guard.Reason)
 	}
-	if guard.Risk == RiskNeedsConfirm && !c.Config.Bash.AllowRiskyWithoutConfirm {
+	if guard.Risk != RiskSafe && !c.Config.Bash.AllowRiskyWithoutConfirm {
 		fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guard.Reason, args.Command)
 		answer, _ := bufio.NewReader(c.In).ReadString('\n')
 		answer = strings.ToLower(strings.TrimSpace(answer))

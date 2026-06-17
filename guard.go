@@ -39,11 +39,11 @@ func CheckBash(command, workdir string) (GuardResult, error) {
 		return GuardResult{Risk: RiskDenied, Reason: "empty command"}, nil
 	}
 	if strings.Contains(command, "\x00") {
-		return GuardResult{Risk: RiskDenied, Reason: "null byte"}, nil
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "command contains a null byte"}, nil
 	}
 	for _, feature := range []string{"$(", "`", "<(", ">("} {
 		if strings.Contains(command, feature) {
-			return GuardResult{Risk: RiskDenied, Reason: "unsupported shell feature: " + feature}, nil
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "command uses shell expansion " + feature + ", which can hide additional commands"}, nil
 		}
 	}
 
@@ -58,13 +58,13 @@ func CheckBash(command, workdir string) (GuardResult, error) {
 	if workdir != "" {
 		wd, err := resolvePath(root, workdir)
 		if err != nil || !insideRoot(root, wd) {
-			return GuardResult{Risk: RiskDenied, Reason: "workdir outside root"}, nil
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "workdir is outside the current dir: " + workdir}, nil
 		}
 	}
 
 	tokens, err := tokenize(command)
 	if err != nil {
-		return GuardResult{Risk: RiskDenied, Reason: err.Error()}, nil
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: err.Error()}, nil
 	}
 	if len(tokens) == 0 {
 		return GuardResult{Risk: RiskDenied, Reason: "empty command"}, nil
@@ -88,7 +88,7 @@ func inspectTokens(tokens []string, root string) (GuardResult, error) {
 		}
 	}
 	if risk == RiskNeedsConfirm {
-		return GuardResult{Risk: risk, Reason: "writes or destructive command"}, nil
+		return GuardResult{Risk: risk, Reason: "one or more commands may write, mutate files, or need elevated trust"}, nil
 	}
 	return GuardResult{Risk: RiskSafe, Reason: "read-only command"}, nil
 }
@@ -96,10 +96,10 @@ func inspectTokens(tokens []string, root string) (GuardResult, error) {
 func inspectCommand(tokens []string, root string) GuardResult {
 	cmd := tokens[0]
 	if deniedWords[cmd] {
-		return GuardResult{Risk: RiskDenied, Reason: "denied command: " + cmd}
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "command may change shell state or run with elevated privileges: " + cmd}
 	}
 	if isShellExec(cmd, tokens) {
-		return GuardResult{Risk: RiskDenied, Reason: "nested shell execution"}
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "nested interpreter execution with inline code can hide additional commands: " + cmd}
 	}
 	if res := inspectPathsAndRedirs(tokens, root); res.Risk == RiskDenied {
 		return res
@@ -112,18 +112,18 @@ func inspectCommand(tokens []string, root string) GuardResult {
 		return inspectFind(tokens, root)
 	case "xargs", "parallel":
 		if len(tokens) == 1 {
-			return GuardResult{Risk: RiskNeedsConfirm, Reason: "wrapper command"}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "wrapper command has no visible child command: " + cmd}
 		}
 		return inspectCommand(tokens[1:], root)
 	case "env", "command", "nice":
 		idx := wrapperCommandIndex(cmd, tokens)
 		if idx < 0 || idx >= len(tokens) {
-			return GuardResult{Risk: RiskNeedsConfirm, Reason: "wrapper command"}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "wrapper command has no visible child command: " + cmd}
 		}
 		return inspectCommand(tokens[idx:], root)
 	case "timeout":
 		if len(tokens) < 3 {
-			return GuardResult{Risk: RiskNeedsConfirm, Reason: "wrapper command"}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "timeout wrapper has no visible child command"}
 		}
 		return inspectCommand(tokens[2:], root)
 	}
@@ -132,10 +132,10 @@ func inspectCommand(tokens []string, root string) GuardResult {
 		if cmd == "go" && len(tokens) > 1 && tokens[1] == "test" {
 			return GuardResult{Risk: RiskSafe, Reason: "go test"}
 		}
-		return GuardResult{Risk: RiskNeedsConfirm, Reason: "writes or destructive command"}
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "command may write, install, delete, or mutate project files: " + cmd}
 	}
 	if !safeWords[cmd] {
-		return GuardResult{Risk: RiskNeedsConfirm, Reason: "unknown command"}
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "command is not in the read-only allowlist: " + cmd}
 	}
 	return GuardResult{Risk: RiskSafe, Reason: "read-only command"}
 }
@@ -150,7 +150,7 @@ func inspectFind(tokens []string, root string) GuardResult {
 	}
 	for _, p := range tokens[1:baseEnd] {
 		if looksPath(p) {
-			if res := checkPathToken(p, root); res.Risk == RiskDenied {
+			if res := checkPathToken(p, root); res.Risk != RiskSafe {
 				return res
 			}
 		}
@@ -158,14 +158,14 @@ func inspectFind(tokens []string, root string) GuardResult {
 	for i := 1; i < len(tokens); i++ {
 		switch tokens[i] {
 		case "-delete":
-			return GuardResult{Risk: RiskNeedsConfirm, Reason: "find delete"}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "find uses -delete and may remove files"}
 		case "-exec", "-execdir":
 			j := i + 1
 			for j < len(tokens) && tokens[j] != ";" && tokens[j] != "\\;" {
 				j++
 			}
 			if j == i+1 {
-				return GuardResult{Risk: RiskDenied, Reason: "empty find exec"}
+				return GuardResult{Risk: RiskNeedsConfirm, Reason: "find exec has no visible child command"}
 			}
 			return inspectCommand(stripFindPlaceholders(tokens[i+1:j]), root)
 		}
@@ -187,16 +187,19 @@ func inspectPathsAndRedirs(tokens []string, root string) GuardResult {
 	for i, t := range tokens {
 		if isRedirection(t) {
 			if i+1 >= len(tokens) {
-				return GuardResult{Risk: RiskDenied, Reason: "missing redirection target"}
+				return GuardResult{Risk: RiskNeedsConfirm, Reason: "redirection operator has no target: " + t}
 			}
 			res := checkPathToken(tokens[i+1], root)
 			if res.Risk == RiskDenied {
-				return GuardResult{Risk: RiskDenied, Reason: "redirection outside root"}
+				return GuardResult{Risk: RiskNeedsConfirm, Reason: "redirection target is outside the current dir: " + tokens[i+1]}
 			}
-			return GuardResult{Risk: RiskNeedsConfirm, Reason: "redirection writes"}
+			if res.Risk == RiskNeedsConfirm {
+				return GuardResult{Risk: RiskNeedsConfirm, Reason: "redirection target is outside the current dir: " + tokens[i+1]}
+			}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "redirection may read or write file content: " + t + " " + tokens[i+1]}
 		}
 		if looksPath(t) {
-			if res := checkPathToken(t, root); res.Risk == RiskDenied {
+			if res := checkPathToken(t, root); res.Risk != RiskSafe {
 				return res
 			}
 		}
@@ -206,12 +209,12 @@ func inspectPathsAndRedirs(tokens []string, root string) GuardResult {
 
 func checkPathToken(token string, root string) GuardResult {
 	if token == "/" || strings.HasPrefix(token, "~/") || token == "~" || hasParentTraversal(token) {
-		return GuardResult{Risk: RiskDenied, Reason: "path outside root: " + token}
+		return GuardResult{Risk: RiskNeedsConfirm, Reason: "path is outside the current dir: " + token}
 	}
 	if strings.HasPrefix(token, "/") {
 		abs := filepath.Clean(token)
 		if !insideRoot(root, abs) {
-			return GuardResult{Risk: RiskDenied, Reason: "path outside root: " + token}
+			return GuardResult{Risk: RiskNeedsConfirm, Reason: "path is outside the current dir: " + token}
 		}
 	}
 	return GuardResult{Risk: RiskSafe}

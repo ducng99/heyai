@@ -77,6 +77,24 @@ func TestChatMalformedToolArgs(t *testing.T) {
 	}
 }
 
+func TestChatFormerlyDeniedCommandRequiresConfirmation(t *testing.T) {
+	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"sudo true"}`}}
+	var errOut bytes.Buffer
+	chat := Chat{
+		Config: Config{Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Err:    &errOut,
+		In:     strings.NewReader("n\n"),
+	}
+
+	result := chat.handleBash(context.Background(), call)
+	if strings.Contains(result, "denied") || !strings.Contains(result, "not approved") {
+		t.Fatalf("result=%q", result)
+	}
+	if !strings.Contains(errOut.String(), "requires confirmation") {
+		t.Fatalf("err=%q", errOut.String())
+	}
+}
+
 func TestChatMaxTurns(t *testing.T) {
 	client := &fakeClient{responses: []Message{{Role: "assistant", ToolCalls: []ToolCall{{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"pwd"}`}}}}}}
 	chat := Chat{Client: client, Config: Config{MaxTurns: 1, Bash: BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}}
