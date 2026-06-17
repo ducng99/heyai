@@ -1,0 +1,93 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+)
+
+type Chat struct {
+	Client interface {
+		Chat(context.Context, []Message) (Message, error)
+	}
+	Config Config
+	Out    io.Writer
+	Err    io.Writer
+	In     io.Reader
+}
+
+func (c Chat) Run(ctx context.Context, prompt string) error {
+	if c.Out == nil {
+		c.Out = io.Discard
+	}
+	if c.Err == nil {
+		c.Err = io.Discard
+	}
+	if c.In == nil {
+		c.In = strings.NewReader("")
+	}
+	if c.Config.MaxTurns <= 0 {
+		c.Config.MaxTurns = defaultConfig().MaxTurns
+	}
+
+	messages := []Message{{Role: "user", Content: prompt}}
+	for turn := 0; turn < c.Config.MaxTurns; turn++ {
+		msg, err := c.Client.Chat(ctx, messages)
+		if err != nil {
+			return err
+		}
+		messages = append(messages, msg)
+		if len(msg.ToolCalls) == 0 {
+			if msg.Content != "" {
+				fmt.Fprintln(c.Out, msg.Content)
+			}
+			return nil
+		}
+
+		for _, call := range msg.ToolCalls {
+			if call.Type != "function" || call.Function.Name != "bash" {
+				return fmt.Errorf("unsupported tool call: %s", call.Function.Name)
+			}
+			result := c.handleBash(ctx, call)
+			messages = append(messages, Message{Role: "tool", ToolCallID: call.ID, Content: result})
+		}
+	}
+	return fmt.Errorf("max turns exceeded")
+}
+
+func (c Chat) handleBash(ctx context.Context, call ToolCall) string {
+	var args BashArgs
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+		return toolError("malformed tool arguments: " + err.Error())
+	}
+	guard, err := CheckBash(args.Command, args.Workdir)
+	if err != nil {
+		return toolError(err.Error())
+	}
+	if guard.Risk == RiskDenied {
+		return toolError("denied: " + guard.Reason)
+	}
+	if guard.Risk == RiskNeedsConfirm && !c.Config.Bash.AllowRiskyWithoutConfirm {
+		fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guard.Reason, args.Command)
+		answer, _ := bufio.NewReader(c.In).ReadString('\n')
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer != "y" && answer != "yes" {
+			return toolError("not approved")
+		}
+	}
+
+	res := RunBash(ctx, args, c.Config.Bash)
+	b, err := json.Marshal(res)
+	if err != nil {
+		return toolError(err.Error())
+	}
+	return string(b)
+}
+
+func toolError(msg string) string {
+	b, _ := json.Marshal(map[string]any{"error": msg})
+	return string(b)
+}
