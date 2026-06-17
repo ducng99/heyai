@@ -1,10 +1,10 @@
-package main
+package heyai
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"heyai/tool"
+	"github.com/ducng99/heyai/tool"
 	"os"
 	"path/filepath"
 	"strings"

@@ -1,4 +1,4 @@
-package main
+package heyai
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"heyai/tool"
+	"github.com/ducng99/heyai/tool"
 )
 
 type Chat struct {

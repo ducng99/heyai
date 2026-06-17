@@ -1,6 +1,6 @@
-# heyai
+# hey
 
-`heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports local tools for guarded bash commands, reading files, listing directories, and modifying files.
+`hey` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports local tools for guarded bash commands, reading files, listing directories, and modifying files.
 
 Assistant responses are rendered as Markdown when stdout is an interactive terminal. Redirected or piped output remains raw Markdown-friendly text.
 
@@ -10,18 +10,18 @@ Assistant responses are rendered as Markdown when stdout is an interactive termi
 
 Download the latest release for your platform from the
 [GitHub Releases](https://github.com/ducng99/heyai/releases) page, extract
-the archive, and place the `heyai` binary somewhere on your `$PATH`.
+the archive, and place the `hey` binary somewhere on your `$PATH`.
 
 ### Go install
 
 ```bash
-go install github.com/ducng99/heyai@latest
+go install github.com/ducng99/heyai/cmd/hey@latest
 ```
 
 ### Build from source
 
 ```bash
-go build -o heyai .
+go build -o hey ./cmd/hey
 ```
 
 ## Configuration
@@ -41,7 +41,7 @@ If `XDG_CONFIG_HOME` is unset, the fallback is:
 Create a starter config:
 
 ```bash
-heyai --init
+hey --init
 ```
 
 Example:
@@ -63,9 +63,9 @@ Example:
 ## Usage
 
 ```bash
-heyai "list the Go files and summarize the project"
-heyai --config-path
-heyai --help
+hey "list the Go files and summarize the project"
+hey --config-path
+hey --help
 ```
 
 ## Bash Tool Security Model
@@ -98,6 +98,6 @@ When `--readonly` or `-r` is enabled, `Edit`, `Write`, and `Patch` are not adver
 
 ```bash
 go test ./...
-go build ./...
-./heyai --help
+go build -o hey ./cmd/hey
+./hey --help
 ```

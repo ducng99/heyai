@@ -1,4 +1,4 @@
-package main
+package heyai
 
 import (
 	"os"

@@ -1,14 +1,14 @@
 # AGENTS.md
 
 ## Repo Shape
-- This is a Go CLI module (`module heyai`) with the main CLI package in the repository root and helper packages under subdirectories.
+- This is a Go CLI module (`module github.com/ducng99/heyai`) with the installable command in `cmd/hey` and reusable CLI package in the repository root.
 - `main.go` handles CLI flags and config loading; `chat.go` owns the tool-call loop; `openai.go` contains the Chat Completions client and bash tool schema; `guard/` implements command classification; `tool/bash.go` implements bash tool execution.
 - The module declares `go 1.26`; CI uses `actions/setup-go` with `go-version-file: go.mod`.
 
 ## Commands
 - Run all tests: `go test ./...`
 - Run one test: `go test -run TestName ./...`
-- Build like the README: `go build -o heyai .`
+- Build like the README: `go build -o hey ./cmd/hey`
 - Build all packages for verification: `go build ./...`
 - Format touched Go files with `gofmt -w <files>`; there is no repo-specific linter or formatter config.
 

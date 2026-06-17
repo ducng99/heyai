@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"heyai/guard"
+	"github.com/ducng99/heyai/guard"
 	"io"
 	"os/exec"
 	"strings"

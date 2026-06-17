@@ -1,4 +1,4 @@
-package main
+package heyai
 
 import (
 	"context"
@@ -8,14 +8,7 @@ import (
 	"strings"
 )
 
-func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string) error {
+func Run(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		printUsage()
 		return nil
@@ -86,9 +79,9 @@ func parseRuntimeFlags(args []string) (bool, bool, bool, []string) {
 
 func printUsage() {
 	fmt.Println(`Usage:
-	  heyai [--auto|-a] [--readonly|-r] [--verbose|-v] "prompt here"
-	  heyai --init
-	  heyai --config-path
+	  hey [--auto|-a] [--readonly|-r] [--verbose|-v] "prompt here"
+	  hey --init
+	  hey --config-path
 
 --auto, -a asks an AI safety checker to approve commands that would otherwise need confirmation.
 --readonly, -r denies any bash command that is not classified as strictly read-only.

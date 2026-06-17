@@ -1,12 +1,12 @@
-package main
+package heyai
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"heyai/guard"
-	"heyai/tool"
+	"github.com/ducng99/heyai/guard"
+	"github.com/ducng99/heyai/tool"
 	"io"
 	"net/http"
 	"strings"
