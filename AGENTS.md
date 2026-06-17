@@ -28,3 +28,6 @@
 ## Release Notes
 - The release workflow only runs on tags matching `v[0-9]*` and builds static artifacts with `CGO_ENABLED=0` for linux/darwin/windows amd64.
 - `cliff.toml` filters changelog entries to conventional commits; non-conventional commit messages are excluded from generated release notes.
+
+## Documentation Maintenance
+- Always check if `README.md` and `AGENTS.md` need to be updated after making changes to the codebase.
