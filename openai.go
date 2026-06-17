@@ -36,11 +36,6 @@ type chatRequest struct {
 	Tools    []ToolDef `json:"tools,omitempty"`
 }
 
-type AutoCheckResult struct {
-	Safe   bool   `json:"safe"`
-	Reason string `json:"reason"`
-}
-
 type ToolDef struct {
 	Type     string      `json:"type"`
 	Function FunctionDef `json:"function"`
@@ -66,10 +61,11 @@ type OpenAIClient struct {
 	BaseURL    string
 	APIKey     string
 	Model      string
+	Tools      []tool.Tool
 }
 
 func NewOpenAIClient(cfg Config) *OpenAIClient {
-	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(cfg.BaseURL, "/"), APIKey: cfg.APIKey, Model: cfg.Model}
+	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(cfg.BaseURL, "/"), APIKey: cfg.APIKey, Model: cfg.Model, Tools: tool.DefaultTools(cfg.Bash)}
 }
 
 func NewAutoCheckClient(cfg Config) *OpenAIClient {
@@ -89,11 +85,11 @@ func NewAutoCheckClient(cfg Config) *OpenAIClient {
 }
 
 func (c *OpenAIClient) Chat(ctx context.Context, messages []Message) (Message, error) {
-	body := chatRequest{Model: c.Model, Messages: messages, Tools: []ToolDef{bashToolDef()}}
+	body := chatRequest{Model: c.Model, Messages: messages, Tools: toolDefs(c.Tools)}
 	return c.chat(ctx, body)
 }
 
-func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args tool.BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {
+func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args tool.BashArgs, guardResult guard.GuardResult) (tool.AutoCheckResult, error) {
 	messages := []Message{
 		{Role: "system", Content: "You are a strict command safety reviewer for a local CLI. Decide whether a bash command that the static guard marked as needing confirmation is safe to run automatically. Approve only when the command is clearly limited to the current project/workdir, has understandable effects, and does not access secrets, credentials, private system files, network services, package installs, privilege escalation, destructive broad deletes, or paths outside the project. Respond only as JSON: {\"safe\":true|false,\"reason\":\"short reason\"}."},
 		{Role: "user", Content: fmt.Sprintf("Command: %s\nWorkdir: %s\nTool description: %s\nStatic guard reason: %s", args.Command, args.Workdir, args.Description, guardResult.Reason)},
@@ -101,11 +97,11 @@ func (c *OpenAIClient) CheckBashSafety(ctx context.Context, args tool.BashArgs, 
 	body := chatRequest{Model: c.Model, Messages: messages}
 	msg, err := c.chat(ctx, body)
 	if err != nil {
-		return AutoCheckResult{}, err
+		return tool.AutoCheckResult{}, err
 	}
-	var result AutoCheckResult
+	var result tool.AutoCheckResult
 	if err := json.Unmarshal([]byte(strings.TrimSpace(msg.Content)), &result); err != nil {
-		return AutoCheckResult{}, fmt.Errorf("auto check returned invalid JSON: %w", err)
+		return tool.AutoCheckResult{}, fmt.Errorf("auto check returned invalid JSON: %w", err)
 	}
 	if result.Reason == "" {
 		result.Reason = "no reason provided"
@@ -179,15 +175,11 @@ func chatCompletionsURL(baseURL string) string {
 	return baseURL + "/v1/chat/completions"
 }
 
-func bashToolDef() ToolDef {
-	return ToolDef{Type: "function", Function: FunctionDef{Name: "bash", Description: "Run a guarded bash command in the current working directory.", Parameters: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"command":     map[string]string{"type": "string"},
-			"description": map[string]string{"type": "string"},
-			"timeout_ms":  map[string]string{"type": "integer"},
-			"workdir":     map[string]string{"type": "string"},
-		},
-		"required": []string{"command"},
-	}}}
+func toolDefs(tools []tool.Tool) []ToolDef {
+	defs := make([]ToolDef, 0, len(tools))
+	for _, t := range tools {
+		def := t.Definition()
+		defs = append(defs, ToolDef{Type: "function", Function: FunctionDef{Name: def.Name, Description: def.Description, Parameters: def.Parameters}})
+	}
+	return defs
 }

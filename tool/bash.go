@@ -1,12 +1,48 @@
 package tool
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"heyai/guard"
+	"io"
 	"os/exec"
+	"strings"
 	"time"
 )
+
+type BashTool struct {
+	Config  BashConfig
+	Options BashOptions
+}
+
+type BashOptions struct {
+	Config      BashConfig
+	Auto        bool
+	AutoChecker BashSafetyChecker
+	In          io.Reader
+	Err         io.Writer
+	Hooks       BashHooks
+}
+
+type AutoCheckResult struct {
+	Safe   bool   `json:"safe"`
+	Reason string `json:"reason"`
+}
+
+type BashSafetyChecker interface {
+	CheckBashSafety(context.Context, BashArgs, guard.GuardResult) (AutoCheckResult, error)
+}
+
+type BashHooks interface {
+	BashStart(BashArgs)
+	BashRunning()
+	BashCompleted(BashResult)
+	BashFailed(string)
+}
 
 type BashConfig struct {
 	TimeoutMS                int  `json:"timeout_ms"`
@@ -28,6 +64,122 @@ type BashResult struct {
 	Stderr    string `json:"stderr"`
 	TimedOut  bool   `json:"timed_out"`
 	Truncated bool   `json:"truncated"`
+}
+
+func (t BashTool) Definition() Definition {
+	return Definition{Name: "bash", Description: "Run a guarded bash command in the current working directory.", Parameters: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"command":     map[string]string{"type": "string"},
+			"description": map[string]string{"type": "string"},
+			"timeout_ms":  map[string]string{"type": "integer"},
+			"workdir":     map[string]string{"type": "string"},
+		},
+		"required": []string{"command"},
+	}}
+}
+
+func (t BashTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
+	var args BashArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		t.bashFailed("malformed tool arguments")
+		return nil, fmt.Errorf("malformed tool arguments: %w", err)
+	}
+	t.bashStart(args)
+	cfg := t.bashConfig()
+	guardResult, err := guard.CheckBash(args.Command, args.Workdir)
+	if err != nil {
+		t.bashFailed(err.Error())
+		return nil, err
+	}
+	if guardResult.Risk == guard.RiskDenied {
+		t.bashFailed(guardResult.Reason)
+		return nil, errors.New("invalid command: " + guardResult.Reason)
+	}
+	if cfg.ReadOnly && guardResult.Risk != guard.RiskSafe {
+		t.bashFailed(guardResult.Reason)
+		return nil, errors.New("readonly mode denied command: " + guardResult.Reason)
+	}
+	if guardResult.Risk != guard.RiskSafe && !cfg.AllowRiskyWithoutConfirm {
+		approved := false
+		if t.Options.Auto {
+			approved = t.autoApprove(ctx, args, guardResult)
+		}
+		if !approved && !t.confirm(args, guardResult) {
+			t.bashFailed("not approved")
+			return nil, errors.New("not approved")
+		}
+	}
+
+	t.bashRunning()
+	result := RunBash(ctx, args, cfg)
+	t.bashCompleted(result)
+	return result, nil
+}
+
+func (t BashTool) bashConfig() BashConfig {
+	if t.Options.Config != (BashConfig{}) {
+		return t.Options.Config
+	}
+	return t.Config
+}
+
+func (t BashTool) autoApprove(ctx context.Context, args BashArgs, guardResult guard.GuardResult) bool {
+	if t.Options.Err == nil {
+		t.Options.Err = io.Discard
+	}
+	if t.Options.AutoChecker == nil {
+		fmt.Fprintln(t.Options.Err, "Auto confirmation unavailable: no auto check client is configured")
+		return false
+	}
+	check, err := t.Options.AutoChecker.CheckBashSafety(ctx, args, guardResult)
+	if err != nil {
+		fmt.Fprintf(t.Options.Err, "Auto confirmation failed: %s\n", err)
+		return false
+	}
+	if !check.Safe {
+		fmt.Fprintf(t.Options.Err, "Auto confirmation rejected command: %s\n", check.Reason)
+		return false
+	}
+	fmt.Fprintf(t.Options.Err, "Auto-approved bash command (%s): %s\n", check.Reason, args.Command)
+	return true
+}
+
+func (t BashTool) confirm(args BashArgs, guardResult guard.GuardResult) bool {
+	if t.Options.Err == nil {
+		t.Options.Err = io.Discard
+	}
+	if t.Options.In == nil {
+		t.Options.In = strings.NewReader("")
+	}
+	fmt.Fprintf(t.Options.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guardResult.Reason, args.Command)
+	answer, _ := bufio.NewReader(t.Options.In).ReadString('\n')
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
+}
+
+func (t BashTool) bashStart(args BashArgs) {
+	if t.Options.Hooks != nil {
+		t.Options.Hooks.BashStart(args)
+	}
+}
+
+func (t BashTool) bashRunning() {
+	if t.Options.Hooks != nil {
+		t.Options.Hooks.BashRunning()
+	}
+}
+
+func (t BashTool) bashCompleted(result BashResult) {
+	if t.Options.Hooks != nil {
+		t.Options.Hooks.BashCompleted(result)
+	}
+}
+
+func (t BashTool) bashFailed(reason string) {
+	if t.Options.Hooks != nil {
+		t.Options.Hooks.BashFailed(reason)
+	}
 }
 
 func RunBash(parent context.Context, args BashArgs, cfg BashConfig) BashResult {

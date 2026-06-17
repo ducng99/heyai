@@ -20,8 +20,12 @@ func TestOpenAIClientSendsToolSchema(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatal(err)
 		}
-		if len(req.Tools) == 1 && req.Tools[0].Function.Name == "bash" {
-			sawTool = true
+		if len(req.Tools) == 3 {
+			for _, tool := range req.Tools {
+				if tool.Function.Name == "bash" {
+					sawTool = true
+				}
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
@@ -35,6 +39,30 @@ func TestOpenAIClientSendsToolSchema(t *testing.T) {
 	}
 	if msg.Content != "ok" || !sawTool {
 		t.Fatalf("content=%q sawTool=%v", msg.Content, sawTool)
+	}
+}
+
+func TestOpenAIClientOmitsEditToolInReadOnlyMode(t *testing.T) {
+	var toolNames []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range req.Tools {
+			toolNames = append(toolNames, tool.Function.Name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewOpenAIClient(Config{APIKey: "k", BaseURL: srv.URL, Model: "m", Bash: tool.BashConfig{ReadOnly: true}})
+	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(toolNames, ","), "Edit") {
+		t.Fatalf("readonly tools included Edit: %#v", toolNames)
 	}
 }
 
@@ -161,7 +189,7 @@ func TestChatFormerlyDeniedCommandRequiresConfirmation(t *testing.T) {
 		In:     strings.NewReader("n\n"),
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if strings.Contains(result, "denied") || !strings.Contains(result, "not approved") {
 		t.Fatalf("result=%q", result)
 	}
@@ -179,7 +207,7 @@ func TestChatReadOnlyDeniesNeedsConfirmCommand(t *testing.T) {
 		In:     strings.NewReader("y\n"),
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if !strings.Contains(result, "readonly mode denied command") {
 		t.Fatalf("result=%q", result)
 	}
@@ -190,7 +218,7 @@ func TestChatReadOnlyDeniesNeedsConfirmCommand(t *testing.T) {
 
 func TestChatAutoApprovesNeedsConfirmCommand(t *testing.T) {
 	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"false"}`}}
-	checker := &fakeAutoChecker{result: AutoCheckResult{Safe: true, Reason: "harmless exit status check"}}
+	checker := &fakeAutoChecker{result: tool.AutoCheckResult{Safe: true, Reason: "harmless exit status check"}}
 	var errOut bytes.Buffer
 	chat := Chat{
 		Auto:       true,
@@ -199,7 +227,7 @@ func TestChatAutoApprovesNeedsConfirmCommand(t *testing.T) {
 		Err:        &errOut,
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if !strings.Contains(result, `"exit_code":1`) {
 		t.Fatalf("result=%q", result)
 	}
@@ -220,7 +248,7 @@ func TestChatVerboseBashLifecycle(t *testing.T) {
 		Err:     &errOut,
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if !strings.Contains(result, `"exit_code":0`) {
 		t.Fatalf("result=%q", result)
 	}
@@ -233,7 +261,7 @@ func TestChatVerboseBashLifecycle(t *testing.T) {
 
 func TestChatAutoRejectsNeedsConfirmCommand(t *testing.T) {
 	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"false"}`}}
-	checker := &fakeAutoChecker{result: AutoCheckResult{Safe: false, Reason: "unknown command"}}
+	checker := &fakeAutoChecker{result: tool.AutoCheckResult{Safe: false, Reason: "unknown command"}}
 	var errOut bytes.Buffer
 	chat := Chat{
 		Auto:       true,
@@ -243,7 +271,7 @@ func TestChatAutoRejectsNeedsConfirmCommand(t *testing.T) {
 		In:         strings.NewReader("y\n"),
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if !strings.Contains(result, `"exit_code":1`) {
 		t.Fatalf("result=%q", result)
 	}
@@ -267,7 +295,7 @@ func TestChatAutoErrorFallsBackToConfirmation(t *testing.T) {
 		In:         strings.NewReader("n\n"),
 	}
 
-	result := chat.handleBash(context.Background(), call)
+	result := handleTestToolCall(context.Background(), &chat, call)
 	if !strings.Contains(result, "not approved") {
 		t.Fatalf("result=%q", result)
 	}
@@ -373,9 +401,14 @@ func (f *fakeClient) Chat(ctx context.Context, messages []Message) (Message, err
 }
 
 type fakeAutoChecker struct {
-	result AutoCheckResult
+	result tool.AutoCheckResult
 	err    error
 	calls  int
+}
+
+func handleTestToolCall(ctx context.Context, chat *Chat, call ToolCall) string {
+	tools := tool.DefaultToolsWithBashOptions(chat.Config.Bash, tool.BashOptions{Auto: chat.Auto, AutoChecker: chat.AutoClient, In: chat.In, Err: chat.Err, Hooks: chat})
+	return tool.Handle(ctx, tools, call.Function.Name, json.RawMessage(call.Function.Arguments))
 }
 
 type fakeRenderer struct {
@@ -390,10 +423,10 @@ func (f fakeRenderer) Render(markdown string) (string, error) {
 	return f.rendered, nil
 }
 
-func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args tool.BashArgs, guardResult guard.GuardResult) (AutoCheckResult, error) {
+func (f *fakeAutoChecker) CheckBashSafety(ctx context.Context, args tool.BashArgs, guardResult guard.GuardResult) (tool.AutoCheckResult, error) {
 	f.calls++
 	if f.err != nil {
-		return AutoCheckResult{}, f.err
+		return tool.AutoCheckResult{}, f.err
 	}
 	return f.result, nil
 }

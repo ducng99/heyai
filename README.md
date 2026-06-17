@@ -1,6 +1,6 @@
 # heyai
 
-`heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports a guarded `bash` tool for read-only and explicitly approved local commands.
+`heyai` is a minimal Go CLI for an OpenAI-compatible Chat Completions API. It accepts a prompt, sends it to the configured model, and supports local tools for guarded bash commands, reading files, listing directories, and editing files.
 
 Assistant responses are rendered as Markdown when stdout is an interactive terminal. Redirected or piped output remains raw Markdown-friendly text.
 
@@ -67,6 +67,14 @@ Empty commands are rejected as invalid instead of prompting.
 When `allow_risky_without_confirm` is `true`, confirmation-required commands run without prompting. Safe commands always run without prompting.
 
 Important: this is a static guard, not a true sandbox. It reduces risk but cannot perfectly contain arbitrary processes. True containment requires OS sandboxing such as containers, bubblewrap, chroot, seccomp, or similar.
+
+## File Tools
+
+The `Read` tool reads a file's content or lists the direct entries in a directory.
+
+The `Edit` tool replaces exactly one occurrence of a string in a file. If the string is not found or appears more than once, the tool returns an error instructing the assistant to read the file and provide a more exact replacement target.
+
+When `--readonly` or `-r` is enabled, `Edit` is not advertised to the model.
 
 ## Verification
 

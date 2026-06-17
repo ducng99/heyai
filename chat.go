@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"heyai/guard"
 	"heyai/tool"
 )
 
@@ -23,9 +21,10 @@ type Chat struct {
 		Render(string) (string, error)
 	}
 	AutoClient interface {
-		CheckBashSafety(context.Context, tool.BashArgs, guard.GuardResult) (AutoCheckResult, error)
+		tool.BashSafetyChecker
 	}
 	Config  Config
+	Tools   []tool.Tool
 	Auto    bool
 	Verbose bool
 	Out     io.Writer
@@ -62,6 +61,10 @@ func (c Chat) Run(ctx context.Context, prompt string) error {
 	c.verboseStartedAt = time.Time{}
 
 	messages := []Message{{Role: "user", Content: prompt}}
+	tools := c.Tools
+	if len(tools) == 0 {
+		tools = tool.DefaultToolsWithBashOptions(c.Config.Bash, tool.BashOptions{Auto: c.Auto, AutoChecker: c.AutoClient, In: c.In, Err: c.Err, Hooks: &c})
+	}
 	for turn := 0; turn < c.Config.MaxTurns; turn++ {
 		msg, err := c.Client.Chat(ctx, messages)
 		if err != nil {
@@ -76,10 +79,10 @@ func (c Chat) Run(ctx context.Context, prompt string) error {
 		}
 
 		for _, call := range msg.ToolCalls {
-			if call.Type != "function" || call.Function.Name != "bash" {
-				return fmt.Errorf("unsupported tool call: %s", call.Function.Name)
+			if call.Type != "function" {
+				return fmt.Errorf("unsupported tool call type: %s", call.Type)
 			}
-			result := c.handleBash(ctx, call)
+			result := tool.Handle(ctx, tools, call.Function.Name, json.RawMessage(call.Function.Arguments))
 			messages = append(messages, Message{Role: "tool", ToolCallID: call.ID, Content: result})
 		}
 	}
@@ -99,69 +102,6 @@ func (c Chat) writeAssistantContent(content string) {
 	fmt.Fprintln(c.Out, content)
 }
 
-func (c *Chat) handleBash(ctx context.Context, call ToolCall) string {
-	var args tool.BashArgs
-	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-		c.writeVerboseBashFailed("malformed tool arguments")
-		return toolError("malformed tool arguments: " + err.Error())
-	}
-	c.writeVerboseBashStart(args)
-	guardResult, err := guard.CheckBash(args.Command, args.Workdir)
-	if err != nil {
-		c.writeVerboseBashFailed(err.Error())
-		return toolError(err.Error())
-	}
-	if guardResult.Risk == guard.RiskDenied {
-		c.writeVerboseBashFailed(guardResult.Reason)
-		return toolError("invalid command: " + guardResult.Reason)
-	}
-	if c.Config.Bash.ReadOnly && guardResult.Risk != guard.RiskSafe {
-		c.writeVerboseBashFailed(guardResult.Reason)
-		return toolError("readonly mode denied command: " + guardResult.Reason)
-	}
-	if guardResult.Risk != guard.RiskSafe && !c.Config.Bash.AllowRiskyWithoutConfirm {
-		approved := false
-		if c.Auto {
-			if c.AutoClient == nil {
-				fmt.Fprintln(c.Err, "Auto confirmation unavailable: no auto check client is configured")
-			} else {
-				check, err := c.AutoClient.CheckBashSafety(ctx, args, guardResult)
-				if err != nil {
-					fmt.Fprintf(c.Err, "Auto confirmation failed: %s\n", err)
-				} else if !check.Safe {
-					fmt.Fprintf(c.Err, "Auto confirmation rejected command: %s\n", check.Reason)
-				} else {
-					approved = true
-					fmt.Fprintf(c.Err, "Auto-approved bash command (%s): %s\n", check.Reason, args.Command)
-				}
-			}
-		}
-		if !approved {
-			fmt.Fprintf(c.Err, "Bash command requires confirmation (%s):\n%s\nRun? [y/N] ", guardResult.Reason, args.Command)
-			answer, _ := bufio.NewReader(c.In).ReadString('\n')
-			answer = strings.ToLower(strings.TrimSpace(answer))
-			if answer != "y" && answer != "yes" {
-				c.writeVerboseBashFailed("not approved")
-				return toolError("not approved")
-			}
-		}
-	}
-
-	c.writeVerboseBashRunning()
-	res := tool.RunBash(ctx, args, c.Config.Bash)
-	c.writeVerboseBashCompleted(res)
-	b, err := json.Marshal(res)
-	if err != nil {
-		return toolError(err.Error())
-	}
-	return string(b)
-}
-
-func toolError(msg string) string {
-	b, _ := json.Marshal(map[string]any{"error": msg})
-	return string(b)
-}
-
 func (c *Chat) writeVerboseBashStart(args tool.BashArgs) {
 	if !c.Verbose {
 		return
@@ -174,6 +114,22 @@ func (c *Chat) writeVerboseBashStart(args tool.BashArgs) {
 		fmt.Fprintln(w, verboseMutedStyle.Render("│ ")+verboseCommandStyle.Render(args.Description))
 	}
 	fmt.Fprintln(w, verboseMutedStyle.Render("│ ")+verboseCommandStyle.Render(args.Command))
+}
+
+func (c *Chat) BashStart(args tool.BashArgs) {
+	c.writeVerboseBashStart(args)
+}
+
+func (c *Chat) BashRunning() {
+	c.writeVerboseBashRunning()
+}
+
+func (c *Chat) BashCompleted(result tool.BashResult) {
+	c.writeVerboseBashCompleted(result)
+}
+
+func (c *Chat) BashFailed(reason string) {
+	c.writeVerboseBashFailed(reason)
 }
 
 func (c *Chat) writeVerboseBashRunning() {
