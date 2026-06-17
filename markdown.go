@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
 	"golang.org/x/term"
 )
 
@@ -15,7 +15,7 @@ func newTerminalMarkdownRenderer(out *os.File) (*glamour.TermRenderer, error) {
 		width = detectedWidth
 	}
 	return glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStylePath("dark"),
 		glamour.WithWordWrap(width),
 	)
 }
