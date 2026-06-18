@@ -29,6 +29,36 @@ func TestReadToolReadsFile(t *testing.T) {
 	}
 }
 
+func TestReadToolReadsFileLineRange(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\nfour"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := (ReadTool{}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"offset":2,"limit":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := result.(ReadResult)
+	if read.Content != "two\nthree\n" {
+		t.Fatalf("content=%q", read.Content)
+	}
+}
+
+func TestReadToolRejectsNegativeLineRange(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (ReadTool{}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"offset":-1}`))
+	if err == nil || !strings.Contains(err.Error(), "offset") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestReadToolListsDirectory(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0644); err != nil {

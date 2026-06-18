@@ -84,7 +84,7 @@ Important: this is a static guard, not a true sandbox. It reduces risk but canno
 
 ## File Tools
 
-The `Read` tool reads a file's content or lists the direct entries in a directory.
+The `Read` tool reads a file's content, optionally limited by 1-indexed `offset` and `limit` line parameters, or lists the direct entries in a directory.
 
 The `Edit` tool replaces exactly one occurrence of a string in a file. If the string is not found or appears more than once, the tool returns an error instructing the assistant to read the file and provide a more exact replacement target.
 

@@ -1,11 +1,14 @@
 package tool
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"sort"
+	"strings"
 )
 
 type ReadTool struct{}
@@ -13,6 +16,8 @@ type ReadTool struct{}
 type ReadArgs struct {
 	Path     string `json:"path,omitempty"`
 	FilePath string `json:"filePath,omitempty"`
+	Offset   int    `json:"offset,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
 }
 
 type ReadResult struct {
@@ -28,6 +33,8 @@ func (ReadTool) Definition() Definition {
 		"properties": map[string]any{
 			"path":     map[string]string{"type": "string"},
 			"filePath": map[string]string{"type": "string"},
+			"offset":   map[string]string{"type": "integer", "description": "Optional 1-indexed line number to start reading from."},
+			"limit":    map[string]string{"type": "integer", "description": "Optional maximum number of lines to read."},
 		},
 	}}
 }
@@ -49,6 +56,12 @@ func (ReadTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	if path == "" {
 		return nil, errors.New("path is required")
+	}
+	if args.Offset < 0 {
+		return nil, errors.New("offset must be greater than or equal to 0")
+	}
+	if args.Limit < 0 {
+		return nil, errors.New("limit must be greater than or equal to 0")
 	}
 
 	info, err := os.Stat(path)
@@ -72,9 +85,63 @@ func (ReadTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 		return ReadResult{Path: path, Type: "directory", Files: files}, nil
 	}
 
+	if args.Offset > 0 || args.Limit > 0 {
+		content, err := readFileRange(ctx, path, args.Offset, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return ReadResult{Path: path, Type: "file", Content: content}, nil
+	}
+
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return ReadResult{Path: path, Type: "file", Content: string(b)}, nil
+	content := string(b)
+	return ReadResult{Path: path, Type: "file", Content: content}, nil
+}
+
+func readFileRange(ctx context.Context, path string, offset, limit int) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	startLine := 1
+	if offset > 0 {
+		startLine = offset
+	}
+	for line := 1; line < startLine; line++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		_, err := reader.ReadString('\n')
+		if errors.Is(err, io.EOF) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	var content strings.Builder
+	for linesRead := 0; limit == 0 || linesRead < limit; {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			content.WriteString(line)
+			linesRead++
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return content.String(), nil
 }
