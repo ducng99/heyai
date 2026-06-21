@@ -49,6 +49,7 @@ type BashConfig struct {
 	AllowRiskyWithoutConfirm bool `json:"allow_risky_without_confirm"`
 	MaxOutputBytes           int  `json:"max_output_bytes"`
 	ReadOnly                 bool `json:"read_only"`
+	AutoMode                 bool `json:"auto_mode"`
 }
 
 type BashArgs struct {

@@ -33,10 +33,11 @@ func Run(args []string) error {
 	if cfg.APIKey == "" {
 		return errors.New("missing api_key in config")
 	}
-	auto, readOnly, verbose, promptArgs := parseRuntimeFlags(args)
+	autoFlag, readOnly, verbose, promptArgs := parseRuntimeFlags(args)
 	if len(promptArgs) == 0 {
 		return errors.New("missing prompt")
 	}
+	auto := cfg.Bash.AutoMode || autoFlag
 	if readOnly {
 		cfg.Bash.ReadOnly = true
 	}
@@ -83,7 +84,7 @@ func printUsage() {
 	  hey --init
 	  hey --config-path
 
---auto, -a asks an AI safety checker to approve commands that would otherwise need confirmation.
+--auto, -a enables auto mode for this run; set "auto_mode": true under "bash" in config to enable it by default.
 --readonly, -r denies any bash command that is not classified as strictly read-only.
 --verbose, -v prints bash tool-call progress.
 

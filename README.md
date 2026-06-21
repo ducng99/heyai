@@ -55,7 +55,8 @@ Example:
   "bash": {
     "timeout_ms": 30000,
     "allow_risky_without_confirm": false,
-    "max_output_bytes": 20000
+    "max_output_bytes": 20000,
+    "auto_mode": false
   }
 }
 ```
@@ -64,9 +65,12 @@ Example:
 
 ```bash
 hey "list the Go files and summarize the project"
+hey --auto "run tests and fix failures"
 hey --config-path
 hey --help
 ```
+
+Set `"auto_mode": true` under `bash` in config to enable auto mode by default. The `--auto` flag enables it for a single run.
 
 ## Bash Tool Security Model
 
