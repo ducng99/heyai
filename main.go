@@ -37,9 +37,9 @@ func Run(args []string) error {
 	if len(promptArgs) == 0 {
 		return errors.New("missing prompt")
 	}
-	auto := cfg.Bash.AutoMode || autoFlag
+	auto := cfg.Tools.AutoMode || autoFlag
 	if readOnly {
-		cfg.Bash.ReadOnly = true
+		cfg.Tools.ReadOnly = true
 	}
 
 	client := NewOpenAIClient(cfg)
@@ -84,7 +84,7 @@ func printUsage() {
 	  hey --init
 	  hey --config-path
 
---auto, -a enables auto mode for this run; set "auto_mode": true under "bash" in config to enable it by default.
+--auto, -a enables auto mode for this run; set "auto_mode": true under "tools" in config to enable it by default.
 --readonly, -r denies any bash command that is not classified as strictly read-only.
 --verbose, -v prints bash tool-call progress.
 

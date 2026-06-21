@@ -47,14 +47,14 @@ func TestLoadConfigInvalidJSONIncludesPath(t *testing.T) {
 	}
 }
 
-func TestLoadConfigBashAutoMode(t *testing.T) {
+func TestLoadConfigToolsAutoMode(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "heyai", "config.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(`{"api_key":"k","bash":{"auto_mode":true}}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"api_key":"k","tools":{"auto_mode":true}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,7 +62,7 @@ func TestLoadConfigBashAutoMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Bash.AutoMode {
-		t.Fatal("expected bash auto mode from config")
+	if !cfg.Tools.AutoMode {
+		t.Fatal("expected tools auto mode from config")
 	}
 }

@@ -57,7 +57,7 @@ func TestOpenAIClientOmitsMutatingFileToolsInReadOnlyMode(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOpenAIClient(Config{APIKey: "k", BaseURL: srv.URL, Model: "m", Bash: tool.BashConfig{ReadOnly: true}})
+	client := NewOpenAIClient(Config{APIKey: "k", BaseURL: srv.URL, Model: "m", Tools: tool.BashConfig{ReadOnly: true}})
 	if _, err := client.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestChatToolLoop(t *testing.T) {
 		{Role: "assistant", Content: "done"},
 	}}
 	var out bytes.Buffer
-	chat := Chat{Client: client, Config: Config{MaxTurns: 4, Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}, Out: &out}
+	chat := Chat{Client: client, Config: Config{MaxTurns: 4, Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}, Out: &out}
 	if err := chat.Run(context.Background(), "run pwd"); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestChatMalformedToolArgs(t *testing.T) {
 		{Role: "assistant", Content: "handled"},
 	}}
 	var out bytes.Buffer
-	chat := Chat{Client: client, Config: Config{MaxTurns: 4, Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}, Out: &out}
+	chat := Chat{Client: client, Config: Config{MaxTurns: 4, Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}, Out: &out}
 	if err := chat.Run(context.Background(), "run"); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestChatFormerlyDeniedCommandRequiresConfirmation(t *testing.T) {
 	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"sudo true"}`}}
 	var errOut bytes.Buffer
 	chat := Chat{
-		Config: Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Config: Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
 		Err:    &errOut,
 		In:     strings.NewReader("n\n"),
 	}
@@ -205,7 +205,7 @@ func TestChatReadOnlyDeniesNeedsConfirmCommand(t *testing.T) {
 	call := ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"echo hi > file.txt"}`}}
 	var errOut bytes.Buffer
 	chat := Chat{
-		Config: Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000, ReadOnly: true}},
+		Config: Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000, ReadOnly: true}},
 		Err:    &errOut,
 		In:     strings.NewReader("y\n"),
 	}
@@ -226,7 +226,7 @@ func TestChatAutoApprovesNeedsConfirmCommand(t *testing.T) {
 	chat := Chat{
 		Auto:       true,
 		AutoClient: checker,
-		Config:     Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Config:     Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
 		Err:        &errOut,
 	}
 
@@ -247,7 +247,7 @@ func TestChatVerboseBashLifecycle(t *testing.T) {
 	var errOut bytes.Buffer
 	chat := Chat{
 		Verbose: true,
-		Config:  Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Config:  Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
 		Err:     &errOut,
 	}
 
@@ -269,7 +269,7 @@ func TestChatAutoRejectsNeedsConfirmCommand(t *testing.T) {
 	chat := Chat{
 		Auto:       true,
 		AutoClient: checker,
-		Config:     Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Config:     Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
 		Err:        &errOut,
 		In:         strings.NewReader("y\n"),
 	}
@@ -293,7 +293,7 @@ func TestChatAutoErrorFallsBackToConfirmation(t *testing.T) {
 	chat := Chat{
 		Auto:       true,
 		AutoClient: checker,
-		Config:     Config{Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
+		Config:     Config{Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}},
 		Err:        &errOut,
 		In:         strings.NewReader("n\n"),
 	}
@@ -348,7 +348,7 @@ func TestOpenAIClientChecksBashSafetyWithoutTools(t *testing.T) {
 
 func TestChatMaxTurns(t *testing.T) {
 	client := &fakeClient{responses: []Message{{Role: "assistant", ToolCalls: []ToolCall{{ID: "1", Type: "function", Function: FunctionCall{Name: "bash", Arguments: `{"command":"pwd"}`}}}}}}
-	chat := Chat{Client: client, Config: Config{MaxTurns: 1, Bash: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}}
+	chat := Chat{Client: client, Config: Config{MaxTurns: 1, Tools: tool.BashConfig{TimeoutMS: 1000, MaxOutputBytes: 2000}}}
 	if err := chat.Run(context.Background(), "run"); err == nil || !strings.Contains(err.Error(), "max turns") {
 		t.Fatalf("err=%v", err)
 	}
@@ -410,7 +410,7 @@ type fakeAutoChecker struct {
 }
 
 func handleTestToolCall(ctx context.Context, chat *Chat, call ToolCall) string {
-	tools := tool.DefaultToolsWithBashOptions(chat.Config.Bash, tool.BashOptions{Auto: chat.Auto, AutoChecker: chat.AutoClient, In: chat.In, Err: chat.Err, Hooks: chat})
+	tools := tool.DefaultToolsWithBashOptions(chat.Config.Tools, tool.BashOptions{Auto: chat.Auto, AutoChecker: chat.AutoClient, In: chat.In, Err: chat.Err, Hooks: chat})
 	return tool.Handle(ctx, tools, call.Function.Name, json.RawMessage(call.Function.Arguments))
 }
 

@@ -65,7 +65,7 @@ type OpenAIClient struct {
 }
 
 func NewOpenAIClient(cfg Config) *OpenAIClient {
-	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(cfg.BaseURL, "/"), APIKey: cfg.APIKey, Model: cfg.Model, Tools: tool.DefaultTools(cfg.Bash)}
+	return &OpenAIClient{HTTPClient: http.DefaultClient, BaseURL: strings.TrimRight(cfg.BaseURL, "/"), APIKey: cfg.APIKey, Model: cfg.Model, Tools: tool.DefaultTools(cfg.Tools)}
 }
 
 func NewAutoCheckClient(cfg Config) *OpenAIClient {

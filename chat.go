@@ -63,7 +63,7 @@ func (c Chat) Run(ctx context.Context, prompt string) error {
 	messages := []Message{{Role: "user", Content: prompt}}
 	tools := c.Tools
 	if len(tools) == 0 {
-		tools = tool.DefaultToolsWithBashOptions(c.Config.Bash, tool.BashOptions{Auto: c.Auto, AutoChecker: c.AutoClient, In: c.In, Err: c.Err, Hooks: &c})
+		tools = tool.DefaultToolsWithBashOptions(c.Config.Tools, tool.BashOptions{Auto: c.Auto, AutoChecker: c.AutoClient, In: c.In, Err: c.Err, Hooks: &c})
 	}
 	for turn := 0; turn < c.Config.MaxTurns; turn++ {
 		msg, err := c.Client.Chat(ctx, messages)

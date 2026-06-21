@@ -16,7 +16,7 @@ type Config struct {
 	Model     string          `json:"model"`
 	MaxTurns  int             `json:"max_turns"`
 	AutoCheck AutoCheckConfig `json:"auto_check"`
-	Bash      tool.BashConfig `json:"bash"`
+	Tools     tool.BashConfig `json:"tools"`
 }
 
 type AutoCheckConfig struct {
@@ -30,7 +30,7 @@ func defaultConfig() Config {
 		BaseURL:  "https://api.openai.com",
 		Model:    "gpt-4o-mini",
 		MaxTurns: 8,
-		Bash: tool.BashConfig{
+		Tools: tool.BashConfig{
 			TimeoutMS:      30000,
 			MaxOutputBytes: 20000,
 		},
@@ -87,11 +87,11 @@ func applyDefaults(cfg *Config) {
 	if cfg.MaxTurns == 0 {
 		cfg.MaxTurns = d.MaxTurns
 	}
-	if cfg.Bash.TimeoutMS == 0 {
-		cfg.Bash.TimeoutMS = d.Bash.TimeoutMS
+	if cfg.Tools.TimeoutMS == 0 {
+		cfg.Tools.TimeoutMS = d.Tools.TimeoutMS
 	}
-	if cfg.Bash.MaxOutputBytes == 0 {
-		cfg.Bash.MaxOutputBytes = d.Bash.MaxOutputBytes
+	if cfg.Tools.MaxOutputBytes == 0 {
+		cfg.Tools.MaxOutputBytes = d.Tools.MaxOutputBytes
 	}
 }
 

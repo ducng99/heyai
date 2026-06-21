@@ -52,7 +52,7 @@ Example:
   "base_url": "https://api.openai.com",
   "model": "gpt-4o-mini",
   "max_turns": 8,
-  "bash": {
+  "tools": {
     "timeout_ms": 30000,
     "allow_risky_without_confirm": false,
     "max_output_bytes": 20000,
@@ -70,7 +70,7 @@ hey --config-path
 hey --help
 ```
 
-Set `"auto_mode": true` under `bash` in config to enable auto mode by default. The `--auto` flag enables it for a single run.
+Set `"auto_mode": true` under `tools` in config to enable auto mode by default. The `--auto` flag enables it for a single run.
 
 ## Bash Tool Security Model
 
