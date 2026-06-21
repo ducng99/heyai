@@ -10,7 +10,9 @@ import (
 	"strings"
 )
 
-type PatchTool struct{}
+type PatchTool struct {
+	Options ToolOptions
+}
 
 type PatchArgs struct {
 	FilePath string `json:"filePath"`
@@ -44,7 +46,7 @@ func (PatchTool) Definition() Definition {
 	}}
 }
 
-func (PatchTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
+func (t PatchTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -60,6 +62,9 @@ func (PatchTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	if args.Patch == "" {
 		return nil, errors.New("patch is required")
+	}
+	if isSensitivePath(args.FilePath) && !confirmToolAction(t.Options, "Patch file (contains potential secrets)", "Sensitive file", args.FilePath) {
+		return nil, errors.New("not approved")
 	}
 
 	b, err := os.ReadFile(args.FilePath)

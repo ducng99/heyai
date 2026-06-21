@@ -11,7 +11,9 @@ import (
 	"strings"
 )
 
-type ReadTool struct{}
+type ReadTool struct {
+	Options ToolOptions
+}
 
 type ReadArgs struct {
 	Path     string `json:"path,omitempty"`
@@ -39,7 +41,7 @@ func (ReadTool) Definition() Definition {
 	}}
 }
 
-func (ReadTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
+func (t ReadTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -83,6 +85,9 @@ func (ReadTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 		}
 		sort.Strings(files)
 		return ReadResult{Path: path, Type: "directory", Files: files}, nil
+	}
+	if isSensitivePath(path) && !confirmToolAction(t.Options, "Read file (contains potential secrets)", "Sensitive file", path) {
+		return nil, errors.New("not approved")
 	}
 
 	if args.Offset > 0 || args.Limit > 0 {

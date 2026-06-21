@@ -92,6 +92,8 @@ The `Write` tool replaces an entire file with supplied content.
 
 The `Patch` tool applies a single-file unified diff patch to a file.
 
+File tools prompt for confirmation before reading or modifying sensitive environment files such as `.env` and `.env.local`.
+
 When `--readonly` or `-r` is enabled, `Edit`, `Write`, and `Patch` are not advertised to the model.
 
 ## Verification

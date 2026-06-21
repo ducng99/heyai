@@ -9,7 +9,9 @@ import (
 	"strings"
 )
 
-type EditTool struct{}
+type EditTool struct {
+	Options ToolOptions
+}
 
 type EditArgs struct {
 	FilePath    string `json:"filePath,omitempty"`
@@ -39,7 +41,7 @@ func (EditTool) Definition() Definition {
 	}}
 }
 
-func (EditTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
+func (t EditTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -67,6 +69,9 @@ func (EditTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	if oldString == "" {
 		return nil, errors.New("string to replace is required")
+	}
+	if isSensitivePath(path) && !confirmToolAction(t.Options, "Edit file (contains potential secrets)", "Sensitive file", path) {
+		return nil, errors.New("not approved")
 	}
 
 	b, err := os.ReadFile(path)

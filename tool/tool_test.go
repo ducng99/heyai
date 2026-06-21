@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -75,6 +76,93 @@ func TestReadToolListsDirectory(t *testing.T) {
 	read := result.(ReadResult)
 	if strings.Join(read.Files, ",") != "a/,b.txt" {
 		t.Fatalf("files=%#v", read.Files)
+	}
+}
+
+func TestReadToolRequiresConfirmationForEnvFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	if err := os.WriteFile(path, []byte("TOKEN=secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+
+	_, err := (ReadTool{Options: ToolOptions{In: strings.NewReader("n\n"), Err: &errOut}}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`}`))
+	if err == nil || !strings.Contains(err.Error(), "not approved") {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(errOut.String(), "Sensitive file") || !strings.Contains(errOut.String(), path) {
+		t.Fatalf("prompt=%q", errOut.String())
+	}
+}
+
+func TestReadToolReadsEnvFileAfterConfirmation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.local")
+	if err := os.WriteFile(path, []byte("TOKEN=secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := (ReadTool{Options: ToolOptions{In: strings.NewReader("yes\n")}}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := result.(ReadResult)
+	if read.Content != "TOKEN=secret" {
+		t.Fatalf("content=%q", read.Content)
+	}
+}
+
+func TestFileMutationToolsRequireConfirmationForEnvFile(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(string, ToolOptions) (any, error)
+	}{
+		{
+			name: "edit",
+			run: func(path string, options ToolOptions) (any, error) {
+				return (EditTool{Options: options}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"oldString":"old","newString":"new"}`))
+			},
+		},
+		{
+			name: "write",
+			run: func(path string, options ToolOptions) (any, error) {
+				return (WriteTool{Options: options}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"content":"TOKEN=new"}`))
+			},
+		},
+		{
+			name: "patch",
+			run: func(path string, options ToolOptions) (any, error) {
+				patch := "@@ -1 +1 @@\n-TOKEN=old\n+TOKEN=new"
+				return (PatchTool{Options: options}).Run(context.Background(), json.RawMessage(`{"filePath":`+quote(path)+`,"patch":`+quote(patch)+`}`))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, ".env")
+			if err := os.WriteFile(path, []byte("TOKEN=old"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var errOut bytes.Buffer
+
+			_, err := tt.run(path, ToolOptions{In: strings.NewReader("n\n"), Err: &errOut})
+			if err == nil || !strings.Contains(err.Error(), "not approved") {
+				t.Fatalf("err=%v", err)
+			}
+			if !strings.Contains(errOut.String(), "Sensitive file") || !strings.Contains(errOut.String(), path) {
+				t.Fatalf("prompt=%q", errOut.String())
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(b) != "TOKEN=old" {
+				t.Fatalf("content=%q", string(b))
+			}
+		})
 	}
 }
 

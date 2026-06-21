@@ -22,9 +22,10 @@ func DefaultTools(bashConfig BashConfig) []Tool {
 
 func DefaultToolsWithBashOptions(bashConfig BashConfig, bashOptions BashOptions) []Tool {
 	bashOptions.Config = bashConfig
-	tools := []Tool{BashTool{Options: bashOptions}, ReadTool{}}
+	toolOptions := ToolOptions{In: bashOptions.In, Err: bashOptions.Err}
+	tools := []Tool{BashTool{Options: bashOptions}, ReadTool{Options: toolOptions}}
 	if !bashConfig.ReadOnly {
-		tools = append(tools, EditTool{}, WriteTool{}, PatchTool{})
+		tools = append(tools, EditTool{Options: toolOptions}, WriteTool{Options: toolOptions}, PatchTool{Options: toolOptions})
 	}
 	return tools
 }

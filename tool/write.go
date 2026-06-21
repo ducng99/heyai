@@ -7,7 +7,9 @@ import (
 	"os"
 )
 
-type WriteTool struct{}
+type WriteTool struct {
+	Options ToolOptions
+}
 
 type WriteArgs struct {
 	FilePath string `json:"filePath,omitempty"`
@@ -32,7 +34,7 @@ func (WriteTool) Definition() Definition {
 	}}
 }
 
-func (WriteTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
+func (t WriteTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -49,6 +51,9 @@ func (WriteTool) Run(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	if path == "" {
 		return nil, errors.New("filePath is required")
+	}
+	if isSensitivePath(path) && !confirmToolAction(t.Options, "Write file (contains potential secrets)", "Sensitive file", path) {
+		return nil, errors.New("not approved")
 	}
 	if err := os.WriteFile(path, []byte(args.Content), 0644); err != nil {
 		return nil, err

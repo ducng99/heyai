@@ -25,6 +25,9 @@
 - Only `go test` is classified safe among `go` commands; `go mod tidy` and other mutating or unknown commands require confirmation.
 - `RunBash` executes through `bash -lc`, applies the lower of config/tool timeouts when provided, and truncates combined stdout/stderr by `max_output_bytes`.
 
+## File Tool Gotchas
+- `Read`, `Edit`, `Write`, and `Patch` share confirmation plumbing for sensitive paths. `.env` and `.env.*` require confirmation before the tool reads or modifies the file.
+
 ## Release Notes
 - The release workflow only runs on tags matching `v[0-9]*` and builds static artifacts with `CGO_ENABLED=0` for linux/darwin/windows amd64.
 - `cliff.toml` filters changelog entries to conventional commits; non-conventional commit messages are excluded from generated release notes.
