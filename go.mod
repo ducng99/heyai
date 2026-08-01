@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	charm.land/glamour/v2 v2.0.1
-	charm.land/lipgloss/v2 v2.0.4
+	charm.land/lipgloss/v2 v2.0.5
 	golang.org/x/term v0.44.0
 )
 
